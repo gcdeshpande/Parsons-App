@@ -1,0 +1,35 @@
+[
+  {
+    "id": "php",
+    "name": "PHP Wizardry",
+    "language": "PHP",
+    "difficulty": "Intermediate",
+    "xp_per_problem": 50,
+    "problem_count": 12,
+    "description": "Debug and reorder classic PHP snippets that power dynamic web experiences.",
+    "badges": ["Array Alchemist", "Session Sorcerer", "PDO Paladin"],
+    "problem_themes": ["Forms", "Database", "APIs"]
+  },
+  {
+    "id": "python",
+    "name": "Python Quest",
+    "language": "Python",
+    "difficulty": "Beginner",
+    "xp_per_problem": 35,
+    "problem_count": 10,
+    "description": "Wrangle data, tame functions, and compose elegant scripts in Python.",
+    "badges": ["List Wrangler", "Decorator Defender", "Async Adventurer"],
+    "problem_themes": ["Data Structures", "Web", "Automation"]
+  },
+  {
+    "id": "javascript",
+    "name": "JavaScript Odyssey",
+    "language": "JavaScript",
+    "difficulty": "Advanced",
+    "xp_per_problem": 60,
+    "problem_count": 14,
+    "description": "Rebuild interactive front-end flows with event-driven puzzles and asynchronous twists.",
+    "badges": ["DOM Dynamo", "Promise Pathfinder", "Testing Tactician"],
+    "problem_themes": ["DOM", "Testing", "Tooling"]
+  }
+]
