@@ -2,9 +2,6 @@
 
 session_start();
 
-const DATA_PATH = __DIR__ . '/../data';
-const DB_FILE = DATA_PATH . '/app.db';
-
 function db(): PDO
 {
     static $pdo = null;
@@ -13,13 +10,33 @@ function db(): PDO
         return $pdo;
     }
 
-    if (!is_dir(DATA_PATH)) {
-        mkdir(DATA_PATH, 0777, true);
-    }
+    $host = getenv('DB_HOST') ?: '127.0.0.1';
+    $port = getenv('DB_PORT') ?: '3306';
+    $database = getenv('DB_NAME') ?: 'parsons_app';
+    $username = getenv('DB_USER') ?: 'root';
+    $password = getenv('DB_PASSWORD') ?: '';
 
-    $pdo = new PDO('sqlite:' . DB_FILE);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $pdo->exec('PRAGMA foreign_keys = ON');
+    $dsn = sprintf('mysql:host=%s;port=%s;charset=utf8mb4', $host, $port);
+
+    try {
+        $pdo = new PDO("$dsn;dbname=$database", $username, $password, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]);
+    } catch (PDOException $exception) {
+        if ((int) $exception->getCode() !== 1049) {
+            throw $exception;
+        }
+
+        $pdo = new PDO($dsn, $username, $password, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ]);
+        $pdo->exec(sprintf('CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', $database));
+        $pdo = null;
+
+        return db();
+    }
 
     initialize_database($pdo);
 
@@ -30,53 +47,58 @@ function initialize_database(PDO $pdo): void
 {
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS tracks (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            language TEXT NOT NULL,
-            difficulty TEXT NOT NULL,
-            xp_per_problem INTEGER NOT NULL,
+            id VARCHAR(64) PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            language VARCHAR(100) NOT NULL,
+            difficulty VARCHAR(100) NOT NULL,
+            xp_per_problem INT NOT NULL,
             description TEXT NOT NULL
-        )'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
     );
 
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS track_badges (
-            track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
-            badge TEXT NOT NULL,
-            sort_order INTEGER NOT NULL DEFAULT 0
-        )'
+            track_id VARCHAR(64) NOT NULL,
+            badge VARCHAR(255) NOT NULL,
+            sort_order INT NOT NULL DEFAULT 0,
+            CONSTRAINT fk_track_badges_track FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
     );
 
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS track_themes (
-            track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
-            theme TEXT NOT NULL,
-            sort_order INTEGER NOT NULL DEFAULT 0
-        )'
+            track_id VARCHAR(64) NOT NULL,
+            theme VARCHAR(255) NOT NULL,
+            sort_order INT NOT NULL DEFAULT 0,
+            CONSTRAINT fk_track_themes_track FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
     );
 
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS problems (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
-            title TEXT NOT NULL,
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            track_id VARCHAR(64) NOT NULL,
+            title VARCHAR(255) NOT NULL,
             synopsis TEXT NOT NULL,
-            difficulty TEXT NOT NULL,
-            xp_reward INTEGER NOT NULL,
-            focus TEXT NOT NULL
-        )'
+            difficulty VARCHAR(100) NOT NULL,
+            xp_reward INT NOT NULL,
+            focus VARCHAR(255) NOT NULL,
+            CONSTRAINT fk_problems_track FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
     );
 
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS results (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
-            problem_id INTEGER NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
-            player_name TEXT NOT NULL,
-            status TEXT NOT NULL,
-            score INTEGER NOT NULL,
-            completed_at TEXT NOT NULL
-        )'
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            track_id VARCHAR(64) NOT NULL,
+            problem_id INT UNSIGNED NOT NULL,
+            player_name VARCHAR(255) NOT NULL,
+            status VARCHAR(100) NOT NULL,
+            score INT NOT NULL,
+            completed_at DATETIME NOT NULL,
+            CONSTRAINT fk_results_track FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+            CONSTRAINT fk_results_problem FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
     );
 
     seed_database($pdo);
@@ -290,7 +312,7 @@ function seed_database(PDO $pdo): void
                     ':player' => $player['name'],
                     ':status' => $status,
                     ':score' => $problemMeta['xp'],
-                    ':completed_at' => $date->format(DATE_ATOM),
+                    ':completed_at' => $date->format('Y-m-d H:i:s'),
                 ]);
             }
         }
@@ -378,7 +400,7 @@ function get_track(string $trackId): ?array
 function load_leaderboards(): array
 {
     $pdo = db();
-    $sql = 'SELECT track_id, player_name, COUNT(DISTINCT problem_id) AS solved, SUM(score) AS xp, SUM(CASE WHEN status = "perfect" THEN 1 ELSE 0 END) AS perfect_runs, MAX(completed_at) AS last_completed FROM results GROUP BY track_id, player_name ORDER BY track_id, xp DESC, last_completed DESC';
+    $sql = "SELECT track_id, player_name, COUNT(DISTINCT problem_id) AS solved, SUM(score) AS xp, SUM(CASE WHEN status = 'perfect' THEN 1 ELSE 0 END) AS perfect_runs, MAX(completed_at) AS last_completed FROM results GROUP BY track_id, player_name ORDER BY track_id, xp DESC, last_completed DESC";
     $stmt = $pdo->query($sql);
 
     $leaderboards = [];
@@ -477,6 +499,6 @@ function record_result(string $trackId, int $problemId, string $playerName, stri
         ':player' => $playerName,
         ':status' => $status,
         ':score' => $score,
-        ':completed_at' => (new DateTimeImmutable())->format(DATE_ATOM),
+        ':completed_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'),
     ]);
 }
