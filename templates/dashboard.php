@@ -17,12 +17,12 @@
                     <div class="stat-card">
                         <h3><?= htmlspecialchars($track['language']) ?> League</h3>
                         <p><?= count($entries) ?> ranked players</p>
-                        <p>Total potential XP: <?= $track['xp_per_problem'] * $track['problem_count'] ?></p>
+                        <p>Total potential XP: <?= number_format($track['total_xp'] ?? ($track['xp_per_problem'] * $track['problem_count'])) ?></p>
                         <?php if ($entries): ?>
                             <div class="top-player">
                                 <span>Top player</span>
                                 <strong><?= htmlspecialchars($entries[0]['name']) ?></strong>
-                                <span class="xp"><?= $entries[0]['xp'] ?> XP</span>
+                                <span class="xp"><?= number_format($entries[0]['xp']) ?> XP · <?= $entries[0]['solved'] ?> solves</span>
                             </div>
                         <?php endif; ?>
                         <a class="btn ghost" href="index.php?page=leaderboard&amp;track=<?= urlencode($track['id']) ?>">Manage leaderboard</a>
@@ -55,7 +55,7 @@
                     </div>
                     <div class="progress-stats">
                         <span><?= $progress['completed'] ?> / <?= $progress['total'] ?> puzzles solved</span>
-                        <span><?= $track['xp_per_problem'] * $progress['completed'] ?> XP earned</span>
+                        <span><?= number_format($progress['xp']) ?> XP earned</span>
                     </div>
                     <footer>
                         <div class="badges-inline">

@@ -8,8 +8,10 @@
         <tr>
             <th>Rank</th>
             <th>Player</th>
+            <th>Solved</th>
+            <th>Perfect clears</th>
             <th>XP</th>
-            <th>Streak</th>
+            <th>Last clear</th>
         </tr>
         </thead>
         <tbody>
@@ -17,8 +19,10 @@
             <tr>
                 <td>#<?= $index + 1 ?></td>
                 <td><?= htmlspecialchars($entry['name']) ?></td>
-                <td><?= $entry['xp'] ?></td>
-                <td><?= $entry['streak'] ?> days</td>
+                <td><?= $entry['solved'] ?></td>
+                <td><?= $entry['perfect_runs'] ?></td>
+                <td><?= number_format($entry['xp']) ?></td>
+                <td><?= $entry['last_completed'] ? date('M j, Y', strtotime($entry['last_completed'])) : '—' ?></td>
             </tr>
         <?php endforeach; ?>
         </tbody>

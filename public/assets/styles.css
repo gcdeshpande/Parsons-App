@@ -493,6 +493,145 @@ input, select {
     background: rgba(15, 23, 42, 0.5);
 }
 
+.problem-list {
+    margin-top: 3rem;
+    padding: 2.5rem;
+    background: rgba(16, 19, 29, 0.8);
+    border: 1px solid rgba(144, 238, 144, 0.1);
+    border-radius: 1.5rem;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(8px);
+}
+
+.problem-list header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.problem-list header h2 {
+    font-size: 2rem;
+    margin: 0;
+}
+
+.problem-list header p {
+    color: rgba(255, 255, 255, 0.7);
+    margin: 0;
+}
+
+.table-scroll {
+    overflow-x: auto;
+    border-radius: 1rem;
+    border: 1px solid rgba(144, 238, 144, 0.15);
+}
+
+.problem-table {
+    width: 100%;
+    min-width: 720px;
+    border-collapse: collapse;
+    background: rgba(8, 9, 15, 0.95);
+}
+
+.problem-table thead {
+    background: linear-gradient(90deg, rgba(91, 206, 250, 0.2), rgba(245, 169, 184, 0.15));
+}
+
+.problem-table th,
+.problem-table td {
+    padding: 1rem 1.25rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(91, 206, 250, 0.12);
+}
+
+.problem-table th {
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.problem-table td strong {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 1rem;
+}
+
+.problem-table td p {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.9rem;
+}
+
+.problem-table tr:hover {
+    background: rgba(91, 206, 250, 0.08);
+}
+
+.difficulty-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.difficulty-bronze {
+    color: #f5a623;
+    border-color: rgba(245, 166, 35, 0.5);
+    background: rgba(245, 166, 35, 0.12);
+}
+
+.difficulty-silver {
+    color: #cbd5f5;
+    border-color: rgba(203, 213, 245, 0.5);
+    background: rgba(203, 213, 245, 0.12);
+}
+
+.difficulty-gold {
+    color: #ffd700;
+    border-color: rgba(255, 215, 0, 0.55);
+    background: rgba(255, 215, 0, 0.15);
+}
+
+.difficulty-platinum {
+    color: #a0f0ff;
+    border-color: rgba(160, 240, 255, 0.55);
+    background: rgba(160, 240, 255, 0.15);
+}
+
+.difficulty-diamond {
+    color: #8cf5e6;
+    border-color: rgba(140, 245, 230, 0.6);
+    background: rgba(140, 245, 230, 0.16);
+}
+
+.difficulty-legendary {
+    color: #ff8ff2;
+    border-color: rgba(255, 143, 242, 0.6);
+    background: rgba(255, 143, 242, 0.16);
+}
+
+.difficulty-mythic {
+    color: #c19dff;
+    border-color: rgba(193, 157, 255, 0.6);
+    background: rgba(193, 157, 255, 0.16);
+}
+
+@media (max-width: 768px) {
+    .problem-list {
+        padding: 1.75rem;
+    }
+
+    .problem-table {
+        min-width: 600px;
+    }
+}
+
 .inline {
     display: inline-block;
 }

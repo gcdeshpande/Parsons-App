@@ -15,19 +15,20 @@ A lightweight PHP playground that gamifies Parsons problems across language-spec
 ## Features
 
 - Multi-language tracks (PHP, Python, JavaScript) with distinct quests and XP rewards
-- Session-based enrollment flow and progress tracking for each player
-- Separate leaderboards per language with streak indicators
+- Session-based enrollment flow backed by persistent SQLite progress data
+- Separate leaderboards per language driven by aggregated result history
 - Player dashboard with progress meters, badge previews, and enrollment actions
 - Admin dashboard summarizing track health, top performers, and leaderboard shortcuts
 - Responsive, neon-arcade UI themed for gamified learning experiences
+- 25 escalating Parsons problems per track with distinct focus areas and XP tuning
 
 ## Project structure
 
 ```
 public/         # Entry point and static assets
-src/            # PHP helpers and bootstrap
+src/            # PHP helpers, SQLite bootstrap, and seeding logic
 templates/      # View templates rendered per route
-data/           # Seed data for tracks and leaderboards
+data/           # SQLite database file (generated automatically on first run)
 ```
 
-The application uses JSON seed data for simplicity. Swap in a database or API-backed source to integrate with production systems.
+The application provisions an SQLite database on first run. To plug in an external system, swap the bootstrap connection helpers for your preferred datastore.

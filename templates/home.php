@@ -52,7 +52,7 @@
                         <li>
                             <span class="placement">#<?= $index + 1 ?></span>
                             <span class="player"><?= htmlspecialchars($entry['name']) ?></span>
-                            <span class="xp"><?= $entry['xp'] ?> XP</span>
+                            <span class="xp"><?= $entry['solved'] ?> solved · <?= number_format($entry['xp']) ?> XP</span>
                         </li>
                     <?php endforeach; ?>
                 </ol>

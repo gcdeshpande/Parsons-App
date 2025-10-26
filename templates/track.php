@@ -44,11 +44,45 @@
                     <span class="placement">#<?= $index + 1 ?></span>
                     <div class="player-info">
                         <strong><?= htmlspecialchars($entry['name']) ?></strong>
-                        <span><?= $entry['streak'] ?> day streak</span>
+                        <span><?= $entry['solved'] ?> solves · <?= $entry['perfect_runs'] ?> perfect</span>
                     </div>
-                    <span class="xp"><?= $entry['xp'] ?> XP</span>
+                    <span class="xp"><?= number_format($entry['xp']) ?> XP</span>
                 </li>
             <?php endforeach; ?>
         </ol>
+    </section>
+
+    <section class="problem-list">
+        <header>
+            <h2>Challenge roster</h2>
+            <p><?= $track['problem_count'] ?> handcrafted Parsons problems spanning beginner to mythic complexity.</p>
+        </header>
+        <div class="table-scroll">
+            <table class="problem-table">
+                <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Quest</th>
+                    <th>Focus</th>
+                    <th>Difficulty</th>
+                    <th>XP</th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($track['problems'] as $index => $problem): ?>
+                    <tr>
+                        <td><?= $index + 1 ?></td>
+                        <td>
+                            <strong><?= htmlspecialchars($problem['title']) ?></strong>
+                            <p><?= htmlspecialchars($problem['synopsis']) ?></p>
+                        </td>
+                        <td><?= htmlspecialchars($problem['focus']) ?></td>
+                        <td><span class="difficulty-pill difficulty-<?= strtolower($problem['difficulty']) ?>"><?= htmlspecialchars($problem['difficulty']) ?></span></td>
+                        <td><?= number_format($problem['xp_reward']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
     </section>
 </section>
