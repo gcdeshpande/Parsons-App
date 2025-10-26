@@ -1061,8 +1061,8 @@ function fetch_random_unsolved_challenge(PDO $pdo, string $playerName, string $t
             LEFT JOIN daily_attempts da ON da.challenge_id = dc.id AND da.player_name = :player
             WHERE da.id IS NULL
             ORDER BY CASE
-                WHEN dc.challenge_date = :today THEN 0
-                WHEN dc.challenge_date > :today THEN 1
+                WHEN dc.challenge_date = :today_current THEN 0
+                WHEN dc.challenge_date > :today_future THEN 1
                 ELSE 2
             END, RAND()
             LIMIT 1';
@@ -1070,7 +1070,8 @@ function fetch_random_unsolved_challenge(PDO $pdo, string $playerName, string $t
     $stmt = $pdo->prepare($sql);
     $stmt->execute([
         ':player' => $playerName,
-        ':today' => $today,
+        ':today_current' => $today,
+        ':today_future' => $today,
     ]);
 
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
