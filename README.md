@@ -31,6 +31,7 @@ A lightweight PHP playground that gamifies Parsons problems across language-spec
 - Admin dashboard summarizing track health, top performers, and leaderboard shortcuts
 - Responsive, neon-arcade UI themed for gamified learning experiences
 - 25 escalating Parsons problems per track with distinct focus areas and XP tuning
+- Drag-and-drop Parsons puzzle arena with distractors, instant grading, and reset/shuffle controls
 
 ## Project structure
 
@@ -41,3 +42,10 @@ templates/      # View templates rendered per route
 ```
 
 The application provisions the MySQL schema and seed data on first run using the configured credentials.
+
+## Solving Parsons puzzles
+
+1. Enroll in a track from the home page or dashboard. The track roster unlocks a **Play** button for each quest once enrolled.
+2. Inside the puzzle arena, drag fragments from the *Fragment pool* into the *Solution canvas*. Avoid distractors—only the required fragments in the correct order will validate.
+3. Use **Shuffle** to randomize the pool or **Reset** to restore the initial order. Double-clicking a fragment moves it between the pool and canvas for quick adjustments.
+4. Hit **Check solution** to submit. Perfect assemblies award XP (once per puzzle) and mark the quest as solved. The feedback panel surfaces errors (missing lines, distractors, or incorrect order) so you can iterate quickly.

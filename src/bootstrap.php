@@ -88,6 +88,18 @@ function initialize_database(PDO $pdo): void
     );
 
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS problem_fragments (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            problem_id INT UNSIGNED NOT NULL,
+            content TEXT NOT NULL,
+            indent_level TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            is_distractor TINYINT(1) NOT NULL DEFAULT 0,
+            sort_order TINYINT UNSIGNED NULL,
+            CONSTRAINT fk_fragments_problem FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS results (
             id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
             track_id VARCHAR(64) NOT NULL,
@@ -256,6 +268,7 @@ function seed_database(PDO $pdo): void
     }
 
     $problemStmt = $pdo->prepare('INSERT INTO problems (track_id, title, synopsis, difficulty, xp_reward, focus) VALUES (:track_id, :title, :synopsis, :difficulty, :xp, :focus)');
+    $fragmentStmt = $pdo->prepare('INSERT INTO problem_fragments (problem_id, content, indent_level, is_distractor, sort_order) VALUES (:problem_id, :content, :indent, :distractor, :sort_order)');
     $problemIdBuckets = [];
     foreach ($problemDecks as $trackId => $problems) {
         foreach ($problems as $problem) {
@@ -269,6 +282,17 @@ function seed_database(PDO $pdo): void
             ]);
             $problemId = (int) $pdo->lastInsertId();
             $problemIdBuckets[$trackId][] = ['id' => $problemId, 'xp' => $problem['xp']];
+
+            $fragments = generate_fragments_for_problem($trackId, $problem, count($problemIdBuckets[$trackId]) - 1);
+            foreach ($fragments as $fragment) {
+                $fragmentStmt->execute([
+                    ':problem_id' => $problemId,
+                    ':content' => $fragment['content'],
+                    ':indent' => $fragment['indent_level'],
+                    ':distractor' => $fragment['is_distractor'] ? 1 : 0,
+                    ':sort_order' => $fragment['sort_order'],
+                ]);
+            }
         }
     }
 
@@ -381,7 +405,13 @@ function get_track(string $trackId): ?array
 
     $problemStmt = $pdo->prepare('SELECT id, title, synopsis, difficulty, xp_reward, focus FROM problems WHERE track_id = :track ORDER BY xp_reward, id');
     $problemStmt->execute([':track' => $trackId]);
-    $track['problems'] = array_map(function ($row) {
+    $solved = [];
+    $user = current_user();
+    if ($user) {
+        $solved = completed_problem_ids($trackId, $user['name']);
+    }
+
+    $track['problems'] = array_map(function ($row) use ($solved) {
         return [
             'id' => (int) $row['id'],
             'title' => $row['title'],
@@ -389,6 +419,7 @@ function get_track(string $trackId): ?array
             'difficulty' => $row['difficulty'],
             'xp_reward' => (int) $row['xp_reward'],
             'focus' => $row['focus'],
+            'solved' => in_array((int) $row['id'], $solved, true),
         ];
     }, $problemStmt->fetchAll(PDO::FETCH_ASSOC));
 
@@ -446,6 +477,11 @@ function enroll_track(string $trackId): void
     }
 }
 
+function is_enrolled(string $trackId): bool
+{
+    return in_array($trackId, $_SESSION['enrollments'] ?? [], true);
+}
+
 function enrollment_progress(string $trackId): array
 {
     $pdo = db();
@@ -492,6 +528,16 @@ function enrollment_progress(string $trackId): array
 function record_result(string $trackId, int $problemId, string $playerName, string $status, int $score): void
 {
     $pdo = db();
+    $existing = $pdo->prepare('SELECT id FROM results WHERE problem_id = :problem AND player_name = :player LIMIT 1');
+    $existing->execute([
+        ':problem' => $problemId,
+        ':player' => $playerName,
+    ]);
+
+    if ($existing->fetchColumn()) {
+        return;
+    }
+
     $stmt = $pdo->prepare('INSERT INTO results (track_id, problem_id, player_name, status, score, completed_at) VALUES (:track, :problem, :player, :status, :score, :completed_at)');
     $stmt->execute([
         ':track' => $trackId,
@@ -502,3 +548,380 @@ function record_result(string $trackId, int $problemId, string $playerName, stri
         ':completed_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'),
     ]);
 }
+
+function completed_problem_ids(string $trackId, string $playerName): array
+{
+    $pdo = db();
+    $stmt = $pdo->prepare('SELECT problem_id FROM results WHERE track_id = :track AND player_name = :player');
+    $stmt->execute([
+        ':track' => $trackId,
+        ':player' => $playerName,
+    ]);
+
+    return array_values(array_unique(array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'problem_id'))));
+}
+
+function has_player_completed_problem(int $problemId, string $playerName): bool
+{
+    $pdo = db();
+    $stmt = $pdo->prepare('SELECT 1 FROM results WHERE problem_id = :problem AND player_name = :player LIMIT 1');
+    $stmt->execute([
+        ':problem' => $problemId,
+        ':player' => $playerName,
+    ]);
+
+    return (bool) $stmt->fetchColumn();
+}
+
+function get_problem_with_fragments(string $trackId, int $problemId, ?string $playerName = null): ?array
+{
+    $pdo = db();
+    $stmt = $pdo->prepare('SELECT id, track_id, title, synopsis, difficulty, xp_reward, focus FROM problems WHERE id = :id AND track_id = :track');
+    $stmt->execute([
+        ':id' => $problemId,
+        ':track' => $trackId,
+    ]);
+
+    $problem = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$problem) {
+        return null;
+    }
+
+    $fragmentStmt = $pdo->prepare('SELECT id, content, indent_level, is_distractor, sort_order FROM problem_fragments WHERE problem_id = :id');
+    $fragmentStmt->execute([':id' => $problemId]);
+    $fragmentRows = $fragmentStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $fragments = array_map(static function (array $row): array {
+        return [
+            'id' => (int) $row['id'],
+            'content' => $row['content'],
+            'indent_level' => (int) $row['indent_level'],
+            'is_distractor' => (bool) $row['is_distractor'],
+            'sort_order' => $row['sort_order'] !== null ? (int) $row['sort_order'] : null,
+        ];
+    }, $fragmentRows);
+
+    $shuffled = $fragments;
+    shuffle($shuffled);
+
+    $solutionCount = count(array_filter($fragments, static fn(array $fragment): bool => !$fragment['is_distractor']));
+
+    $problemData = [
+        'id' => (int) $problem['id'],
+        'track_id' => $problem['track_id'],
+        'title' => $problem['title'],
+        'synopsis' => $problem['synopsis'],
+        'difficulty' => $problem['difficulty'],
+        'xp_reward' => (int) $problem['xp_reward'],
+        'focus' => $problem['focus'],
+        'fragments' => $shuffled,
+        'solution_count' => $solutionCount,
+        'distractor_count' => count($fragments) - $solutionCount,
+        'solved' => false,
+    ];
+
+    if ($playerName) {
+        $problemData['solved'] = has_player_completed_problem((int) $problem['id'], $playerName);
+    }
+
+    return $problemData;
+}
+
+function grade_problem_attempt(string $trackId, int $problemId, array $submittedFragmentIds, string $playerName): array
+{
+    $pdo = db();
+    $stmt = $pdo->prepare('SELECT id, xp_reward FROM problems WHERE id = :id AND track_id = :track');
+    $stmt->execute([
+        ':id' => $problemId,
+        ':track' => $trackId,
+    ]);
+
+    $problem = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$problem) {
+        return ['success' => false, 'message' => 'Unknown puzzle.'];
+    }
+
+    $fragmentStmt = $pdo->prepare('SELECT id, sort_order, is_distractor FROM problem_fragments WHERE problem_id = :id');
+    $fragmentStmt->execute([':id' => $problemId]);
+    $rows = $fragmentStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!$rows) {
+        return ['success' => false, 'message' => 'Puzzle fragments are missing.'];
+    }
+
+    $fragmentMap = [];
+    $solutionCount = 0;
+    foreach ($rows as $row) {
+        $fragmentMap[(int) $row['id']] = [
+            'sort_order' => $row['sort_order'] !== null ? (int) $row['sort_order'] : null,
+            'is_distractor' => (bool) $row['is_distractor'],
+        ];
+        if (!(bool) $row['is_distractor']) {
+            $solutionCount++;
+        }
+    }
+
+    $submitted = array_values(array_map('intval', $submittedFragmentIds));
+    if (!$submitted) {
+        return ['success' => false, 'message' => 'Drag code lines into the solution area to submit.'];
+    }
+
+    if (count($submitted) !== count(array_unique($submitted))) {
+        return ['success' => false, 'message' => 'Each fragment can only be used once.'];
+    }
+
+    foreach ($submitted as $fragmentId) {
+        if (!isset($fragmentMap[$fragmentId])) {
+            return ['success' => false, 'message' => 'One of the fragments is invalid.'];
+        }
+    }
+
+    if (count($submitted) < $solutionCount) {
+        return ['success' => false, 'message' => 'You are missing required lines.'];
+    }
+
+    if (count($submitted) > $solutionCount) {
+        return ['success' => false, 'message' => 'A distractor slipped into your solution.'];
+    }
+
+    $ordersByPosition = [];
+    foreach ($submitted as $fragmentId) {
+        $fragment = $fragmentMap[$fragmentId];
+        if ($fragment['is_distractor'] || $fragment['sort_order'] === null) {
+            return ['success' => false, 'message' => 'A distractor slipped into your solution.'];
+        }
+        $ordersByPosition[] = $fragment['sort_order'];
+    }
+
+    $expectedOrder = range(1, $solutionCount);
+    if ($ordersByPosition !== $expectedOrder) {
+        return ['success' => false, 'message' => 'The sequence is out of order. Try again!'];
+    }
+
+    $alreadySolved = has_player_completed_problem($problemId, $playerName);
+    if (!$alreadySolved) {
+        record_result($trackId, $problemId, $playerName, 'perfect', (int) $problem['xp_reward']);
+    }
+
+    return [
+        'success' => true,
+        'message' => $alreadySolved ? 'Puzzle already mastered — XP was previously awarded.' : 'Legendary! You assembled the puzzle flawlessly.',
+        'xp' => (int) $problem['xp_reward'],
+        'alreadySolved' => $alreadySolved,
+    ];
+}
+
+function generate_fragments_for_problem(string $trackId, array $problem, int $problemIndex): array
+{
+    return match ($trackId) {
+        'php' => generate_php_fragments($problem, $problemIndex),
+        'python' => generate_python_fragments($problem, $problemIndex),
+        'javascript' => generate_javascript_fragments($problem, $problemIndex),
+        default => [],
+    };
+}
+
+function generate_php_fragments(array $problem, int $problemIndex): array
+{
+    $xp = (int) ($problem['xp'] ?? $problem['xp_reward'] ?? 0);
+    $title = var_export($problem['title'], true);
+    $focus = var_export($problem['focus'], true);
+    $difficulty = var_export($problem['difficulty'], true);
+    $stepsVar = php_variable($problem['focus'], 'steps');
+    $refinedVar = php_variable($problem['focus'], 'refined');
+    $ledgerVar = php_variable($problem['focus'], 'ledger');
+
+    $solution = [
+        ['content' => sprintf('$quest = ["title" => %s];', $title), 'indent_level' => 0],
+        ['content' => sprintf('$quest["focus"] = %s;', $focus), 'indent_level' => 0],
+        ['content' => sprintf('$quest["difficulty"] = %s;', $difficulty), 'indent_level' => 0],
+        ['content' => sprintf('%s = calibrate_steps($quest, %d);', $stepsVar, $xp), 'indent_level' => 0],
+        ['content' => sprintf('%s = [];', $refinedVar), 'indent_level' => 0],
+        ['content' => sprintf('foreach (%s as $step) {', $stepsVar), 'indent_level' => 0],
+        ['content' => sprintf('%s[] = polish_step($step);', $refinedVar), 'indent_level' => 1],
+        ['content' => '}', 'indent_level' => 0],
+        ['content' => sprintf('%s = sync_ledgers(%s);', $ledgerVar, $refinedVar), 'indent_level' => 0],
+        ['content' => sprintf('$quest["steps"] = %s;', $ledgerVar), 'indent_level' => 0],
+        ['content' => 'return $quest;', 'indent_level' => 0],
+    ];
+
+    if ($problemIndex % 4 === 0) {
+        $solution = array_merge(
+            array_slice($solution, 0, 4),
+            [
+                ['content' => sprintf('if (empty(%s)) {', $stepsVar), 'indent_level' => 0],
+                ['content' => sprintf('%s = ignite_fallbacks($quest);', $stepsVar), 'indent_level' => 1],
+                ['content' => '}', 'indent_level' => 0],
+            ],
+            array_slice($solution, 4)
+        );
+    }
+
+    $distractors = [
+        ['content' => sprintf('shuffle(%s);', $refinedVar), 'indent_level' => 0],
+        ['content' => sprintf('return array_sum(%s);', $stepsVar), 'indent_level' => 0],
+        ['content' => sprintf('%s = array_reverse(%s);', $ledgerVar, $stepsVar), 'indent_level' => 0],
+    ];
+
+    return assign_fragment_order($solution, $distractors);
+}
+
+function generate_python_fragments(array $problem, int $problemIndex): array
+{
+    $xp = (int) ($problem['xp'] ?? $problem['xp_reward'] ?? 0);
+    $focusLiteral = json_encode($problem['focus'], JSON_UNESCAPED_UNICODE);
+    $titleLiteral = json_encode($problem['title'], JSON_UNESCAPED_UNICODE);
+    $difficultyLiteral = json_encode($problem['difficulty'], JSON_UNESCAPED_UNICODE);
+    $funcName = 'assemble_' . python_identifier($problem['focus'], 'quest');
+    $stepsVar = python_identifier($problem['focus'], 'steps');
+    $refinedVar = python_identifier($problem['focus'], 'refined');
+
+    $solution = [
+        ['content' => sprintf('def %s():', $funcName), 'indent_level' => 0],
+        ['content' => sprintf('quest = {"title": %s, "focus": %s}', $titleLiteral, $focusLiteral), 'indent_level' => 1],
+        ['content' => sprintf('quest["difficulty"] = %s', $difficultyLiteral), 'indent_level' => 1],
+        ['content' => sprintf('%s = calibrate_steps(quest, xp=%d)', $stepsVar, $xp), 'indent_level' => 1],
+        ['content' => sprintf('%s: list[str] = []', $refinedVar), 'indent_level' => 1],
+        ['content' => sprintf('for step in %s:', $stepsVar), 'indent_level' => 1],
+        ['content' => sprintf('%s.append(polish_step(step))', $refinedVar), 'indent_level' => 2],
+        ['content' => sprintf('quest["steps"] = ledger_sync(%s)', $refinedVar), 'indent_level' => 1],
+        ['content' => 'return quest', 'indent_level' => 1],
+    ];
+
+    if ($problemIndex % 3 === 1) {
+        $solution = array_merge(
+            array_slice($solution, 0, 5),
+            [
+                ['content' => sprintf('if not %s:', $stepsVar), 'indent_level' => 1],
+                ['content' => sprintf('%s = bootstrap_fallbacks(quest)', $stepsVar), 'indent_level' => 2],
+            ],
+            array_slice($solution, 5)
+        );
+    }
+
+    $distractors = [
+        ['content' => sprintf('return sorted(%s)', $stepsVar), 'indent_level' => 1],
+        ['content' => sprintf('%s.sort(reverse=True)', $refinedVar), 'indent_level' => 2],
+        ['content' => sprintf('quest["steps"] = list(reversed(%s))', $stepsVar), 'indent_level' => 1],
+    ];
+
+    return assign_fragment_order($solution, $distractors);
+}
+
+function generate_javascript_fragments(array $problem, int $problemIndex): array
+{
+    $xp = (int) ($problem['xp'] ?? $problem['xp_reward'] ?? 0);
+    $titleLiteral = json_encode($problem['title'], JSON_UNESCAPED_UNICODE);
+    $focusLiteral = json_encode($problem['focus'], JSON_UNESCAPED_UNICODE);
+    $difficultyLiteral = json_encode($problem['difficulty'], JSON_UNESCAPED_UNICODE);
+    $functionName = js_function_name($problem['focus'], 'quest');
+
+    $solution = [
+        ['content' => sprintf('export function %s() {', $functionName), 'indent_level' => 0],
+        ['content' => 'const quest = {', 'indent_level' => 1],
+        ['content' => sprintf('title: %s,', $titleLiteral), 'indent_level' => 2],
+        ['content' => sprintf('focus: %s,', $focusLiteral), 'indent_level' => 2],
+        ['content' => sprintf('difficulty: %s,', $difficultyLiteral), 'indent_level' => 2],
+        ['content' => '};', 'indent_level' => 1],
+        ['content' => sprintf('const steps = calibrateSteps(quest, { xp: %d });', $xp), 'indent_level' => 1],
+        ['content' => 'const refined = [];', 'indent_level' => 1],
+        ['content' => 'for (const step of steps) {', 'indent_level' => 1],
+        ['content' => 'refined.push(polishStep(step));', 'indent_level' => 2],
+        ['content' => '}', 'indent_level' => 1],
+        ['content' => 'quest.steps = syncLedger(refined);', 'indent_level' => 1],
+        ['content' => 'return quest;', 'indent_level' => 1],
+        ['content' => '}', 'indent_level' => 0],
+    ];
+
+    if ($problemIndex % 5 === 2) {
+        $solution = array_merge(
+            array_slice($solution, 0, 7),
+            [
+                ['content' => 'if (!steps.length) {', 'indent_level' => 1],
+                ['content' => 'bootstrapFallbacks(quest, steps);', 'indent_level' => 2],
+                ['content' => '}', 'indent_level' => 1],
+            ],
+            array_slice($solution, 7)
+        );
+    }
+
+    $distractors = [
+        ['content' => 'return steps.sort();', 'indent_level' => 1],
+        ['content' => 'refined.reverse();', 'indent_level' => 2],
+        ['content' => 'quest.steps = steps.reverse();', 'indent_level' => 1],
+    ];
+
+    return assign_fragment_order($solution, $distractors);
+}
+
+function assign_fragment_order(array $solutionLines, array $distractorLines): array
+{
+    $fragments = [];
+    $order = 1;
+    foreach ($solutionLines as $line) {
+        $fragments[] = [
+            'content' => $line['content'],
+            'indent_level' => $line['indent_level'],
+            'is_distractor' => false,
+            'sort_order' => $order++,
+        ];
+    }
+
+    foreach ($distractorLines as $line) {
+        $fragments[] = [
+            'content' => $line['content'],
+            'indent_level' => $line['indent_level'],
+            'is_distractor' => true,
+            'sort_order' => null,
+        ];
+    }
+
+    return $fragments;
+}
+
+function php_variable(string $focus, string $suffix): string
+{
+    $base = preg_replace('/[^a-z0-9]+/i', '', ucwords($focus));
+    if ($base === '') {
+        $base = 'Quest';
+    }
+
+    return '$' . lcfirst($base) . ucfirst($suffix);
+}
+
+function python_identifier(string $focus, string $suffix): string
+{
+    $base = strtolower(preg_replace('/[^a-z0-9]+/i', '_', $focus));
+    $base = trim($base, '_');
+    if ($base === '') {
+        $base = $suffix;
+    }
+    if (!preg_match('/^[a-z_]/', $base)) {
+        $base = '_' . $base;
+    }
+
+    return $base . '_' . $suffix;
+}
+
+function js_function_name(string $focus, string $suffix): string
+{
+    $base = strtolower(preg_replace('/[^a-z0-9]+/i', ' ', $focus));
+    $words = array_values(array_filter(explode(' ', $base)));
+    if (!$words) {
+        $words = [$suffix];
+    }
+
+    $identifier = array_shift($words);
+    foreach ($words as $word) {
+        $identifier .= ucfirst($word);
+    }
+
+    $identifier .= ucfirst($suffix);
+
+    if (!preg_match('/^[a-z_]/i', $identifier)) {
+        $identifier = lcfirst($suffix);
+    }
+
+    return $identifier;
+}
+

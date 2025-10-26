@@ -66,6 +66,7 @@
                     <th>Focus</th>
                     <th>Difficulty</th>
                     <th>XP</th>
+                    <th>Status</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -79,6 +80,20 @@
                         <td><?= htmlspecialchars($problem['focus']) ?></td>
                         <td><span class="difficulty-pill difficulty-<?= strtolower($problem['difficulty']) ?>"><?= htmlspecialchars($problem['difficulty']) ?></span></td>
                         <td><?= number_format($problem['xp_reward']) ?></td>
+                        <td class="problem-actions">
+                            <div class="action-stack">
+                                <?php if (!empty($problem['solved'])): ?>
+                                    <span class="badge success">Solved</span>
+                                <?php endif; ?>
+                                <?php if ($isEnrolled || is_admin()): ?>
+                                    <a class="btn mini" href="index.php?page=problem&amp;track=<?= urlencode($track['id']) ?>&amp;id=<?= $problem['id'] ?>">
+                                        <?= !empty($problem['solved']) ? 'Replay' : 'Play' ?>
+                                    </a>
+                                <?php else: ?>
+                                    <span class="badge ghost">Enroll to play</span>
+                                <?php endif; ?>
+                            </div>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>

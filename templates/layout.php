@@ -36,10 +36,20 @@
     <p>Built for code puzzlers. Track your streaks, level up your languages.</p>
 </footer>
 
+<?php $scripts = $scripts ?? []; ?>
+<?php foreach ($scripts as $script): ?>
+    <script src="<?= htmlspecialchars($script) ?>" defer></script>
+<?php endforeach; ?>
 <script>
-    document.querySelectorAll('[data-progress]').forEach(function (bar) {
-        const pct = bar.getAttribute('data-progress');
-        bar.querySelector('.progress-fill').style.width = pct + '%';
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.progress-bar[data-progress]').forEach(function (bar) {
+            var fill = bar.querySelector('.progress-fill');
+            if (!fill) {
+                return;
+            }
+            var pct = Number(bar.getAttribute('data-progress')) || 0;
+            fill.style.width = pct + '%';
+        });
     });
 </script>
 </body>
