@@ -1,0 +1,17 @@
+{
+  "php": [
+    {"name": "Lara Lumen", "xp": 540, "streak": 6},
+    {"name": "Marco Blade", "xp": 480, "streak": 4},
+    {"name": "Sia Storm", "xp": 450, "streak": 3}
+  ],
+  "python": [
+    {"name": "Piper Snake", "xp": 420, "streak": 5},
+    {"name": "Neo Byte", "xp": 390, "streak": 2},
+    {"name": "Ava Script", "xp": 360, "streak": 4}
+  ],
+  "javascript": [
+    {"name": "Jax Node", "xp": 610, "streak": 7},
+    {"name": "Rhea React", "xp": 570, "streak": 6},
+    {"name": "Vue Vega", "xp": 530, "streak": 3}
+  ]
+}
