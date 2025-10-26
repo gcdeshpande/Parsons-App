@@ -7,13 +7,42 @@
             <a class="btn ghost" href="#tracks">Browse tracks</a>
         </div>
     </div>
-    <div class="hero-xp-card">
-        <p class="label">Daily Quest</p>
-        <h2>Fix the rogue loop</h2>
-        <p>Repair a scrambled for-loop to earn +120 XP.</p>
-        <div class="xp-burst">XP +120</div>
+    <div class="hero-art">
+        <p class="caption">Solve. Drag. Celebrate. Repeat.</p>
     </div>
 </section>
+
+<?php if ($dailyChallenge): ?>
+<section id="daily" class="daily-callout">
+    <div class="daily-header">
+        <span class="label">Daily challenge · <?= htmlspecialchars($dailyChallenge['track_name']) ?></span>
+        <h2><?= htmlspecialchars($dailyChallenge['title']) ?></h2>
+    </div>
+    <p class="daily-description"><?= htmlspecialchars($dailyChallenge['description']) ?></p>
+    <dl class="daily-meta">
+        <div>
+            <dt>Reward</dt>
+            <dd><?= number_format($dailyChallenge['total_xp']) ?> XP</dd>
+        </div>
+        <div>
+            <dt>Players cleared</dt>
+            <dd><?= number_format($dailyChallenge['completed_players']) ?></dd>
+        </div>
+    </dl>
+    <div class="daily-actions">
+        <?php if (current_user()): ?>
+            <?php if ($dailyChallenge['completed']): ?>
+                <span class="badge success">Completed</span>
+                <a class="btn ghost" href="index.php?page=problem&amp;track=<?= urlencode($dailyChallenge['track_id']) ?>&amp;id=<?= $dailyChallenge['problem_id'] ?>">Replay puzzle</a>
+            <?php else: ?>
+                <a class="btn primary" href="index.php?page=problem&amp;track=<?= urlencode($dailyChallenge['track_id']) ?>&amp;id=<?= $dailyChallenge['problem_id'] ?>">Play daily challenge</a>
+            <?php endif; ?>
+        <?php else: ?>
+            <a class="btn primary" href="index.php?page=login">Log in to play</a>
+        <?php endif; ?>
+    </div>
+</section>
+<?php endif; ?>
 
 <section id="tracks" class="tracks-grid">
     <?php foreach ($tracks as $track): ?>

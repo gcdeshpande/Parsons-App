@@ -29,9 +29,11 @@ A lightweight PHP playground that gamifies Parsons problems across language-spec
 - Separate leaderboards per language driven by aggregated result history
 - Player dashboard with progress meters, badge previews, and enrollment actions
 - Admin dashboard summarizing track health, top performers, and leaderboard shortcuts
-- Responsive, neon-arcade UI themed for gamified learning experiences
+- Responsive, mobile-first neon arcade UI tuned for touch and desktop play
 - 25 escalating Parsons problems per track with distinct focus areas and XP tuning
-- Drag-and-drop Parsons puzzle arena with distractors, instant grading, and reset/shuffle controls
+- Drag-and-drop Parsons puzzle arena with distractors, instant grading, and reset/shuffle controls (tap friendly on mobile)
+- Daily challenge spotlight with XP bonuses and completion tracking
+- Admin tooling to create new tracks, seed puzzles (including distractors), and curate the daily challenge
 
 ## Project structure
 
@@ -47,5 +49,19 @@ The application provisions the MySQL schema and seed data on first run using the
 
 1. Enroll in a track from the home page or dashboard. The track roster unlocks a **Play** button for each quest once enrolled.
 2. Inside the puzzle arena, drag fragments from the *Fragment pool* into the *Solution canvas*. Avoid distractors—only the required fragments in the correct order will validate.
-3. Use **Shuffle** to randomize the pool or **Reset** to restore the initial order. Double-clicking a fragment moves it between the pool and canvas for quick adjustments.
+3. Use **Shuffle** to randomize the pool or **Reset** to restore the initial order. On desktop you can drag; on mobile tap fragments to move them between the pool and canvas or switch panels with the *Fragment pool / Solution canvas* toggle.
 4. Hit **Check solution** to submit. Perfect assemblies award XP (once per puzzle) and mark the quest as solved. The feedback panel surfaces errors (missing lines, distractors, or incorrect order) so you can iterate quickly.
+
+### Daily challenge
+
+- The home page and dashboard highlight the featured puzzle of the day, including XP payout (base + bonus) and completion counts.
+- Logged-in players can jump straight into the challenge; once solved it is marked complete and still available for replay practice.
+- Administrators can retarget the daily challenge to any puzzle (including new ones) and adjust the bonus XP or teaser copy from the dashboard.
+
+### Admin tools
+
+When logged in as an admin, the dashboard exposes a management suite for live content updates:
+
+- **Create track** – supply language, description, difficulty, optional custom slug, plus comma-separated badges/themes. The track is created immediately with default XP-per-problem.
+- **Add puzzle** – choose a track, specify synopsis metadata, and paste solution/distractor fragments (one per line, indentation driven by leading spaces). The fragment pool and solution ordering are generated automatically.
+- **Feature daily challenge** – pick any puzzle from the catalog, customise the headline/teaser, and adjust bonus XP for the selected date.

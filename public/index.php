@@ -35,6 +35,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($page === 'admin-track-create') {
+        require_admin();
+        $result = create_track_from_request($_POST);
+        add_flash($result['success'] ? 'success' : 'error', $result['message']);
+        header('Location: index.php?page=dashboard');
+        exit;
+    }
+
+    if ($page === 'admin-problem-create') {
+        require_admin();
+        $result = create_problem_from_request($_POST);
+        add_flash($result['success'] ? 'success' : 'error', $result['message']);
+        header('Location: index.php?page=dashboard');
+        exit;
+    }
+
+    if ($page === 'admin-daily-challenge') {
+        require_admin();
+        $problemId = (int) ($_POST['problem_id'] ?? 0);
+        $date = trim($_POST['challenge_date'] ?? date('Y-m-d'));
+        $title = trim($_POST['title'] ?? 'Daily Challenge');
+        $description = trim($_POST['description'] ?? 'Take on today’s featured puzzle.');
+        $xpBonus = max(0, (int) ($_POST['xp_bonus'] ?? 0));
+
+        if ($problemId > 0) {
+            admin_set_daily_challenge($date, $problemId, $title === '' ? 'Daily Challenge' : $title, $description === '' ? 'Take on today’s featured puzzle.' : $description, $xpBonus);
+            add_flash('success', 'Daily challenge updated.');
+        } else {
+            add_flash('error', 'Select a puzzle to feature as the daily challenge.');
+        }
+
+        header('Location: index.php?page=dashboard');
+        exit;
+    }
+
     if ($page === 'problem') {
         require_login();
         header('Content-Type: application/json');
@@ -81,6 +116,8 @@ if ($page === 'logout') {
     exit;
 }
 
+$currentUser = current_user();
+$dailyChallenge = get_daily_challenge($currentUser['name'] ?? null);
 $tracks = load_tracks();
 $leaderboards = load_leaderboards();
 
@@ -90,9 +127,11 @@ switch ($page) {
         break;
     case 'dashboard':
         require_login();
-        $user = current_user();
+        $user = $currentUser;
         $enrolledTracks = array_filter($tracks, fn($track) => in_array($track['id'], $_SESSION['enrollments'] ?? [], true));
-        render('dashboard.php', compact('tracks', 'enrolledTracks', 'leaderboards', 'user'));
+        $overallProgress = user_overall_progress($user['name']);
+        $problemOptions = is_admin() ? list_all_problems() : [];
+        render('dashboard.php', compact('tracks', 'enrolledTracks', 'leaderboards', 'user', 'overallProgress', 'dailyChallenge', 'problemOptions'));
         break;
     case 'track':
         $trackId = $_GET['track'] ?? '';
@@ -113,7 +152,7 @@ switch ($page) {
             render('404.php', []);
             break;
         }
-        $user = current_user();
+        $user = $currentUser;
         $problem = get_problem_with_fragments($trackId, $problemId, $user['name']);
         if (!$problem) {
             render('404.php', []);
@@ -135,6 +174,6 @@ switch ($page) {
         render('leaderboard.php', compact('track', 'entries'));
         break;
     default:
-        render('home.php', compact('tracks', 'leaderboards'));
+        render('home.php', compact('tracks', 'leaderboards', 'dailyChallenge'));
         break;
 }

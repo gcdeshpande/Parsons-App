@@ -31,7 +31,26 @@
         const shuffleButton = arena.querySelector('[data-shuffle]');
         const submitUrl = arena.dataset.submitUrl;
         const hint = canvas.querySelector('.drop-hint');
+        const panelContainer = arena.querySelector('[data-panels]');
+        const panelButtons = arena.querySelectorAll('[data-panel-target]');
         let dragged = null;
+
+        function setActivePanel(panel) {
+            if (!panelContainer) {
+                return;
+            }
+            panelContainer.setAttribute('data-active-panel', panel);
+            panelButtons.forEach(function (button) {
+                const isActive = button.dataset.panelTarget === panel;
+                button.classList.toggle('is-active', isActive);
+            });
+        }
+
+        panelButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                setActivePanel(button.dataset.panelTarget || 'pool');
+            });
+        });
 
         function setFeedback(message, type) {
             if (!feedback) {
@@ -83,6 +102,7 @@
             });
             setFeedback('Puzzle reset. Try a fresh arrangement!', null);
             updateLineNumbers();
+            setActivePanel('pool');
         }
 
         function shufflePalette() {
@@ -125,8 +145,10 @@
                 }
                 if (card.parentElement === palette) {
                     canvas.appendChild(card);
+                    setActivePanel('canvas');
                 } else {
                     palette.appendChild(card);
+                    setActivePanel('pool');
                 }
                 updateLineNumbers();
             });
@@ -139,11 +161,30 @@
                     event.preventDefault();
                     if (card.parentElement === palette) {
                         canvas.appendChild(card);
+                        setActivePanel('canvas');
                     } else {
                         palette.appendChild(card);
+                        setActivePanel('pool');
                     }
                     updateLineNumbers();
                 }
+            });
+
+            card.addEventListener('click', function () {
+                if (!canPlay) {
+                    return;
+                }
+                if (dragged) {
+                    return;
+                }
+                if (card.parentElement === palette) {
+                    canvas.appendChild(card);
+                    setActivePanel('canvas');
+                } else {
+                    palette.appendChild(card);
+                    setActivePanel('pool');
+                }
+                updateLineNumbers();
             });
         }
 
@@ -164,6 +205,9 @@
                     container.appendChild(dragged);
                 }
                 updateLineNumbers();
+                if (container === canvas) {
+                    setActivePanel('canvas');
+                }
             }
             container.classList.remove('drop-active');
         }

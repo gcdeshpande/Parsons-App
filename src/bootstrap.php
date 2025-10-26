@@ -113,6 +113,29 @@ function initialize_database(PDO $pdo): void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
     );
 
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS daily_challenges (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            challenge_date DATE NOT NULL UNIQUE,
+            problem_id INT UNSIGNED NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            description TEXT NOT NULL,
+            xp_bonus INT NOT NULL DEFAULT 0,
+            CONSTRAINT fk_daily_challenges_problem FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS daily_attempts (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            challenge_id INT UNSIGNED NOT NULL,
+            player_name VARCHAR(255) NOT NULL,
+            completed_at DATETIME NOT NULL,
+            UNIQUE KEY daily_attempt_unique (challenge_id, player_name),
+            CONSTRAINT fk_daily_attempts_challenge FOREIGN KEY (challenge_id) REFERENCES daily_challenges(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+
     seed_database($pdo);
 }
 
@@ -341,6 +364,8 @@ function seed_database(PDO $pdo): void
             }
         }
     }
+
+    get_daily_challenge();
 }
 
 function load_tracks(): array
@@ -466,6 +491,35 @@ function require_login(): void
     }
 }
 
+function require_admin(): void
+{
+    require_login();
+    if (!is_admin()) {
+        http_response_code(403);
+        exit('Admin access required.');
+    }
+}
+
+function add_flash(string $type, string $message): void
+{
+    if (!isset($_SESSION['flashes'])) {
+        $_SESSION['flashes'] = [];
+    }
+
+    $_SESSION['flashes'][] = [
+        'type' => $type,
+        'message' => $message,
+    ];
+}
+
+function consume_flashes(): array
+{
+    $flashes = $_SESSION['flashes'] ?? [];
+    unset($_SESSION['flashes']);
+
+    return $flashes;
+}
+
 function enroll_track(string $trackId): void
 {
     if (!isset($_SESSION['enrollments'])) {
@@ -525,6 +579,28 @@ function enrollment_progress(string $trackId): array
     ];
 }
 
+function user_overall_progress(string $playerName): array
+{
+    $pdo = db();
+    $summaryStmt = $pdo->prepare('SELECT COUNT(DISTINCT problem_id) AS solved, COALESCE(SUM(score), 0) AS xp, COUNT(DISTINCT track_id) AS tracks FROM results WHERE player_name = :player');
+    $summaryStmt->execute([':player' => $playerName]);
+    $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: ['solved' => 0, 'xp' => 0, 'tracks' => 0];
+
+    $nextMilestone = ((int) ceil(max(1, $summary['solved']) / 10)) * 10;
+
+    $totalProblems = (int) db()->query('SELECT COUNT(*) FROM problems')->fetchColumn();
+    $percentage = $totalProblems > 0 ? min(100, (int) round(((int) $summary['solved'] / $totalProblems) * 100)) : 0;
+
+    return [
+        'solved' => (int) $summary['solved'],
+        'xp' => (int) $summary['xp'],
+        'tracks' => (int) $summary['tracks'],
+        'nextMilestone' => max(10, $nextMilestone),
+        'totalProblems' => $totalProblems,
+        'completionPercent' => $percentage,
+    ];
+}
+
 function record_result(string $trackId, int $problemId, string $playerName, string $status, int $score): void
 {
     $pdo = db();
@@ -547,6 +623,8 @@ function record_result(string $trackId, int $problemId, string $playerName, stri
         ':score' => $score,
         ':completed_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'),
     ]);
+
+    mark_daily_completion($problemId, $playerName);
 }
 
 function completed_problem_ids(string $trackId, string $playerName): array
@@ -709,6 +787,129 @@ function grade_problem_attempt(string $trackId, int $problemId, array $submitted
         'xp' => (int) $problem['xp_reward'],
         'alreadySolved' => $alreadySolved,
     ];
+}
+
+function get_daily_challenge(?string $playerName = null, ?DateTimeInterface $date = null): ?array
+{
+    $pdo = db();
+    $targetDate = $date ? $date->format('Y-m-d') : (new DateTimeImmutable('today'))->format('Y-m-d');
+
+    $challenge = fetch_daily_challenge_row($pdo, $targetDate);
+    if (!$challenge) {
+        $challenge = auto_seed_daily_challenge($pdo, $targetDate);
+    }
+
+    if (!$challenge) {
+        return null;
+    }
+
+    $isCompleted = false;
+    if ($playerName) {
+        $attemptStmt = $pdo->prepare('SELECT 1 FROM daily_attempts WHERE challenge_id = :challenge AND player_name = :player LIMIT 1');
+        $attemptStmt->execute([
+            ':challenge' => $challenge['id'],
+            ':player' => $playerName,
+        ]);
+        $isCompleted = (bool) $attemptStmt->fetchColumn();
+    }
+
+    $completionStmt = $pdo->prepare('SELECT COUNT(*) FROM daily_attempts WHERE challenge_id = :challenge');
+    $completionStmt->execute([':challenge' => $challenge['id']]);
+    $challenge['completed_players'] = (int) $completionStmt->fetchColumn();
+
+    return format_daily_challenge_payload($challenge, $isCompleted);
+}
+
+function format_daily_challenge_payload(array $challenge, bool $completed): array
+{
+    return [
+        'id' => (int) $challenge['id'],
+        'date' => $challenge['challenge_date'],
+        'problem_id' => (int) $challenge['problem_id'],
+        'track_id' => $challenge['track_id'],
+        'track_name' => $challenge['track_name'],
+        'title' => $challenge['title'],
+        'description' => $challenge['description'],
+        'xp_reward' => (int) $challenge['xp_reward'],
+        'xp_bonus' => (int) $challenge['xp_bonus'],
+        'total_xp' => (int) $challenge['xp_reward'] + (int) $challenge['xp_bonus'],
+        'problem_title' => $challenge['problem_title'],
+        'completed' => $completed,
+        'completed_players' => (int) ($challenge['completed_players'] ?? 0),
+    ];
+}
+
+function fetch_daily_challenge_row(PDO $pdo, string $date): ?array
+{
+    $stmt = $pdo->prepare('SELECT dc.*, p.track_id, p.title AS problem_title, p.xp_reward, t.name AS track_name FROM daily_challenges dc JOIN problems p ON p.id = dc.problem_id JOIN tracks t ON t.id = p.track_id WHERE challenge_date = :date');
+    $stmt->execute([':date' => $date]);
+
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function auto_seed_daily_challenge(PDO $pdo, string $date): ?array
+{
+    $problemId = $pdo->query('SELECT id FROM problems ORDER BY RAND() LIMIT 1')->fetchColumn();
+    if (!$problemId) {
+        return null;
+    }
+
+    $problemStmt = $pdo->prepare('SELECT p.id, p.title, p.synopsis, p.track_id, p.xp_reward, p.difficulty, p.focus, t.name AS track_name FROM problems p JOIN tracks t ON t.id = p.track_id WHERE p.id = :problem');
+    $problemStmt->execute([':problem' => $problemId]);
+    $problem = $problemStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$problem) {
+        return null;
+    }
+
+    $title = sprintf('Daily: %s', $problem['title']);
+    $description = sprintf('Master this %s %s challenge from %s.', strtolower($problem['difficulty']), strtolower($problem['focus']), $problem['track_name']);
+    $xpBonus = max(15, (int) round($problem['xp_reward'] * 0.25));
+
+    upsert_daily_challenge(new DateTimeImmutable($date), (int) $problem['id'], $title, $description, $xpBonus);
+
+    return fetch_daily_challenge_row($pdo, $date);
+}
+
+function upsert_daily_challenge(DateTimeInterface $date, int $problemId, string $title, string $description, int $xpBonus = 0): void
+{
+    $pdo = db();
+    $stmt = $pdo->prepare('INSERT INTO daily_challenges (challenge_date, problem_id, title, description, xp_bonus) VALUES (:date, :problem, :title, :description, :bonus) ON DUPLICATE KEY UPDATE problem_id = VALUES(problem_id), title = VALUES(title), description = VALUES(description), xp_bonus = VALUES(xp_bonus)');
+    $stmt->execute([
+        ':date' => $date->format('Y-m-d'),
+        ':problem' => $problemId,
+        ':title' => $title,
+        ':description' => $description,
+        ':bonus' => $xpBonus,
+    ]);
+}
+
+function mark_daily_completion(int $problemId, string $playerName): void
+{
+    $pdo = db();
+    $today = (new DateTimeImmutable('today'))->format('Y-m-d');
+    $challengeStmt = $pdo->prepare('SELECT id FROM daily_challenges WHERE challenge_date = :date AND problem_id = :problem');
+    $challengeStmt->execute([
+        ':date' => $today,
+        ':problem' => $problemId,
+    ]);
+    $challengeId = $challengeStmt->fetchColumn();
+    if (!$challengeId) {
+        return;
+    }
+
+    $attemptStmt = $pdo->prepare('INSERT IGNORE INTO daily_attempts (challenge_id, player_name, completed_at) VALUES (:challenge, :player, :completed_at)');
+    $attemptStmt->execute([
+        ':challenge' => $challengeId,
+        ':player' => $playerName,
+        ':completed_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'),
+    ]);
+}
+
+function admin_set_daily_challenge(string $date, int $problemId, string $title, string $description, int $xpBonus): void
+{
+    $normalized = DateTimeImmutable::createFromFormat('Y-m-d', $date) ?: new DateTimeImmutable('today');
+    upsert_daily_challenge($normalized, $problemId, $title, $description, $xpBonus);
 }
 
 function generate_fragments_for_problem(string $trackId, array $problem, int $problemIndex): array
@@ -923,5 +1124,193 @@ function js_function_name(string $focus, string $suffix): string
     }
 
     return $identifier;
+}
+
+function slugify(string $value): string
+{
+    $slug = strtolower(trim(preg_replace('/[^a-z0-9]+/i', '-', $value), '-'));
+    if ($slug === '') {
+        $slug = 'track-' . bin2hex(random_bytes(2));
+    }
+
+    return $slug;
+}
+
+function ensure_unique_track_id(string $desired): string
+{
+    $pdo = db();
+    $base = $desired;
+    $attempt = $desired;
+    $counter = 2;
+    $stmt = $pdo->prepare('SELECT 1 FROM tracks WHERE id = :id');
+    while (true) {
+        $stmt->execute([':id' => $attempt]);
+        if (!$stmt->fetchColumn()) {
+            return $attempt;
+        }
+        $attempt = $base . '-' . $counter;
+        $counter++;
+    }
+}
+
+function parse_fragment_lines(string $input): array
+{
+    $lines = preg_split('/\r?\n/', $input);
+    $fragments = [];
+    foreach ($lines as $line) {
+        if (trim($line) === '') {
+            continue;
+        }
+        $normalized = str_replace("\t", '    ', rtrim($line));
+        $leading = strlen($normalized) - strlen(ltrim($normalized));
+        $indent = (int) floor($leading / 4);
+        $fragments[] = [
+            'content' => ltrim($normalized),
+            'indent_level' => $indent,
+        ];
+    }
+
+    return $fragments;
+}
+
+function create_track_from_request(array $input): array
+{
+    $name = trim($input['name'] ?? '');
+    $language = trim($input['language'] ?? '');
+    $difficulty = trim($input['difficulty'] ?? 'Intermediate');
+    $xpPerProblem = max(10, (int) ($input['xp_per_problem'] ?? 50));
+    $description = trim($input['description'] ?? '');
+
+    if ($name === '' || $language === '' || $description === '') {
+        return ['success' => false, 'message' => 'Name, language, and description are required.'];
+    }
+
+    $requestedId = trim($input['track_id'] ?? '');
+    $trackId = ensure_unique_track_id($requestedId !== '' ? slugify($requestedId) : slugify($name));
+
+    $badges = array_filter(array_map('trim', explode(',', $input['badges'] ?? '')));
+    $themes = array_filter(array_map('trim', explode(',', $input['themes'] ?? '')));
+
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare('INSERT INTO tracks (id, name, language, difficulty, xp_per_problem, description) VALUES (:id, :name, :language, :difficulty, :xp, :description)');
+        $stmt->execute([
+            ':id' => $trackId,
+            ':name' => $name,
+            ':language' => $language,
+            ':difficulty' => $difficulty,
+            ':xp' => $xpPerProblem,
+            ':description' => $description,
+        ]);
+
+        if ($badges) {
+            $badgeStmt = $pdo->prepare('INSERT INTO track_badges (track_id, badge, sort_order) VALUES (:track, :badge, :sort_order)');
+            foreach ($badges as $index => $badge) {
+                $badgeStmt->execute([
+                    ':track' => $trackId,
+                    ':badge' => $badge,
+                    ':sort_order' => $index,
+                ]);
+            }
+        }
+
+        if ($themes) {
+            $themeStmt = $pdo->prepare('INSERT INTO track_themes (track_id, theme, sort_order) VALUES (:track, :theme, :sort_order)');
+            foreach ($themes as $index => $theme) {
+                $themeStmt->execute([
+                    ':track' => $trackId,
+                    ':theme' => $theme,
+                    ':sort_order' => $index,
+                ]);
+            }
+        }
+
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        $pdo->rollBack();
+        return ['success' => false, 'message' => 'Unable to create track: ' . $exception->getMessage()];
+    }
+
+    return ['success' => true, 'message' => 'Track created successfully.', 'track_id' => $trackId];
+}
+
+function create_problem_from_request(array $input): array
+{
+    $trackId = trim($input['track_id'] ?? '');
+    $title = trim($input['title'] ?? '');
+    $synopsis = trim($input['synopsis'] ?? '');
+    $difficulty = trim($input['difficulty'] ?? 'Bronze');
+    $xpReward = max(5, (int) ($input['xp_reward'] ?? 0));
+    $focus = trim($input['focus'] ?? 'Core concepts');
+    $solutionInput = $input['solution_fragments'] ?? '';
+    $distractorInput = $input['distractor_fragments'] ?? '';
+
+    if ($trackId === '' || $title === '' || $synopsis === '' || $solutionInput === '') {
+        return ['success' => false, 'message' => 'Track, title, synopsis, and solution fragments are required.'];
+    }
+
+    $pdo = db();
+    $trackStmt = $pdo->prepare('SELECT 1 FROM tracks WHERE id = :id');
+    $trackStmt->execute([':id' => $trackId]);
+    if (!$trackStmt->fetchColumn()) {
+        return ['success' => false, 'message' => 'Selected track does not exist.'];
+    }
+
+    $solutionFragments = parse_fragment_lines($solutionInput);
+    if (count($solutionFragments) < 2) {
+        return ['success' => false, 'message' => 'Provide at least two ordered solution fragments.'];
+    }
+
+    $distractorFragments = parse_fragment_lines($distractorInput);
+    $fragments = assign_fragment_order($solutionFragments, $distractorFragments);
+
+    $pdo->beginTransaction();
+    try {
+        $problemStmt = $pdo->prepare('INSERT INTO problems (track_id, title, synopsis, difficulty, xp_reward, focus) VALUES (:track, :title, :synopsis, :difficulty, :xp, :focus)');
+        $problemStmt->execute([
+            ':track' => $trackId,
+            ':title' => $title,
+            ':synopsis' => $synopsis,
+            ':difficulty' => $difficulty,
+            ':xp' => $xpReward,
+            ':focus' => $focus,
+        ]);
+        $problemId = (int) $pdo->lastInsertId();
+
+        $fragmentStmt = $pdo->prepare('INSERT INTO problem_fragments (problem_id, content, indent_level, is_distractor, sort_order) VALUES (:problem, :content, :indent, :distractor, :sort_order)');
+        foreach ($fragments as $fragment) {
+            $fragmentStmt->execute([
+                ':problem' => $problemId,
+                ':content' => $fragment['content'],
+                ':indent' => $fragment['indent_level'],
+                ':distractor' => $fragment['is_distractor'] ? 1 : 0,
+                ':sort_order' => $fragment['sort_order'],
+            ]);
+        }
+
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        $pdo->rollBack();
+        return ['success' => false, 'message' => 'Unable to create puzzle: ' . $exception->getMessage()];
+    }
+
+    return ['success' => true, 'message' => 'Puzzle added successfully.', 'problem_id' => $problemId];
+}
+
+function list_all_problems(): array
+{
+    $pdo = db();
+    $stmt = $pdo->query('SELECT p.id, p.title, p.track_id, p.difficulty, t.name AS track_name FROM problems p JOIN tracks t ON t.id = p.track_id ORDER BY t.language, p.title');
+
+    return array_map(static function (array $row): array {
+        return [
+            'id' => (int) $row['id'],
+            'title' => $row['title'],
+            'track_id' => $row['track_id'],
+            'track_name' => $row['track_name'],
+            'difficulty' => $row['difficulty'],
+        ];
+    }, $stmt->fetchAll(PDO::FETCH_ASSOC));
 }
 

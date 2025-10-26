@@ -36,11 +36,15 @@
     </header>
 
     <section class="parsons-play" data-parsons data-submit-url="index.php?page=problem&amp;track=<?= urlencode($track['id']) ?>&amp;id=<?= $problem['id'] ?>" data-can-play="<?= $canPlay ? 'true' : 'false' ?>" data-problem-id="<?= $problem['id'] ?>" data-solved="<?= $problem['solved'] ? 'true' : 'false' ?>">
-        <div class="parsons-columns">
-            <article class="parsons-column">
+        <div class="panel-toggles" data-panel-toggle-group>
+            <button type="button" class="toggle-btn is-active" data-panel-target="pool">Fragment pool</button>
+            <button type="button" class="toggle-btn" data-panel-target="canvas">Solution canvas</button>
+        </div>
+        <div class="workspace-panels" data-panels data-active-panel="pool">
+            <article class="workspace-panel" data-panel="pool">
                 <header>
                     <h2>Fragment pool</h2>
-                    <p>Drag code lines into the solution canvas. Distractors look convincing—double check before placing.</p>
+                    <p>Tap or drag snippets into the solution area. Distractors look convincing—double check before placing.</p>
                 </header>
                 <div class="fragment-list" data-fragment-palette>
                     <?php foreach ($problem['fragments'] as $index => $fragment): ?>
@@ -60,7 +64,7 @@
                 </div>
             </article>
 
-            <article class="parsons-column">
+            <article class="workspace-panel" data-panel="canvas">
                 <header>
                     <h2>Solution canvas</h2>
                     <p>Arrange the lines into a runnable sequence. You must use all required fragments and avoid distractors.</p>

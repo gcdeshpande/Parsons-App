@@ -16,8 +16,10 @@
         <a href="index.php" class="logo">Parsons Playgrounds</a>
         <span class="tagline">Assemble code. Unlock achievements.</span>
     </div>
-    <nav class="main-nav">
+    <button class="nav-toggle" data-nav-toggle aria-expanded="false" aria-controls="primary-navigation">☰</button>
+    <nav class="main-nav" id="primary-navigation" data-nav>
         <a href="index.php">Home</a>
+        <a href="index.php#daily">Daily challenge</a>
         <a href="index.php?page=dashboard">Dashboard</a>
         <a href="index.php?page=leaderboard&track=php">Leaderboards</a>
         <?php if (current_user()): ?>
@@ -29,6 +31,14 @@
 </header>
 
 <main class="content">
+    <?php $flashes = consume_flashes(); ?>
+    <?php if ($flashes): ?>
+        <div class="flash-stack" role="status" aria-live="polite">
+            <?php foreach ($flashes as $flash): ?>
+                <div class="flash flash-<?= htmlspecialchars($flash['type']) ?>"><?= htmlspecialchars($flash['message']) ?></div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
     <?php include __DIR__ . '/' . $view; ?>
 </main>
 
@@ -42,6 +52,16 @@
 <?php endforeach; ?>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        var navToggle = document.querySelector('[data-nav-toggle]');
+        var nav = document.querySelector('[data-nav]');
+        if (navToggle && nav) {
+            navToggle.addEventListener('click', function () {
+                var expanded = navToggle.getAttribute('aria-expanded') === 'true';
+                navToggle.setAttribute('aria-expanded', String(!expanded));
+                nav.classList.toggle('is-open', !expanded);
+            });
+        }
+
         document.querySelectorAll('.progress-bar[data-progress]').forEach(function (bar) {
             var fill = bar.querySelector('.progress-fill');
             if (!fill) {

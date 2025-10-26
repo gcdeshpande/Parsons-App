@@ -34,12 +34,13 @@ a {
 }
 
 .app-header, .app-footer {
-    padding: 1.5rem 5vw;
-    background: rgba(15, 23, 42, 0.8);
+    padding: 1.25rem 1.5rem;
+    background: rgba(15, 23, 42, 0.85);
     backdrop-filter: blur(18px);
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
 .brand {
@@ -59,17 +60,34 @@ a {
     color: var(--muted);
 }
 
+
+.nav-toggle {
+    background: transparent;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 0.4rem 0.75rem;
+    font-size: 1.2rem;
+    cursor: pointer;
+}
+
 .main-nav {
+    display: none;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.main-nav.is-open {
     display: flex;
-    gap: 1rem;
-    align-items: center;
 }
 
 .main-nav a {
-    padding: 0.6rem 1rem;
+    padding: 0.7rem 1rem;
     border-radius: 999px;
     transition: transform 0.2s ease, background 0.2s ease;
     font-weight: 600;
+    text-align: center;
 }
 
 .main-nav a:hover {
@@ -88,16 +106,37 @@ a {
 
 .content {
     flex: 1;
-    padding: 4rem 5vw 6rem;
+    padding: 2.5rem 1.5rem 4rem;
     display: flex;
     flex-direction: column;
-    gap: 3rem;
+    gap: 2.5rem;
+}
+
+.flash-stack {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.flash {
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    font-weight: 600;
+}
+
+.flash-success {
+    background: rgba(34, 197, 94, 0.2);
+    color: #bbf7d0;
+}
+
+.flash-error {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fecaca;
 }
 
 .hero {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 2rem;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
     align-items: stretch;
 }
 
@@ -115,34 +154,71 @@ a {
     margin-top: 2rem;
     display: flex;
     gap: 1rem;
+    flex-wrap: wrap;
 }
 
-.hero-xp-card {
-    background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(249, 115, 22, 0.2));
-    border: 1px solid rgba(148, 163, 184, 0.2);
+.hero-art {
+    min-height: 180px;
     border-radius: 24px;
-    padding: 2rem;
+    border: 1px solid rgba(56, 189, 248, 0.18);
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(249, 115, 22, 0.16));
     display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    position: relative;
-    overflow: hidden;
+    align-items: flex-end;
+    padding: 1.5rem;
 }
 
-.hero-xp-card .label {
+.hero-art .caption {
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    letter-spacing: 0.2em;
+    color: var(--muted);
+}
+
+.daily-callout {
+    background: rgba(17, 35, 64, 0.9);
+    border: 1px solid rgba(56, 189, 248, 0.24);
+    border-radius: 24px;
+    padding: 1.75rem;
+    display: grid;
+    gap: 1.25rem;
+}
+
+.daily-description {
+    color: var(--muted);
+    line-height: 1.6;
+}
+
+.daily-callout .label {
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
     font-size: 0.75rem;
     color: var(--muted);
 }
 
-.hero-xp-card .xp-burst {
-    background: rgba(34, 197, 94, 0.25);
-    color: #bbf7d0;
-    padding: 0.5rem 1rem;
-    border-radius: 999px;
-    font-weight: 600;
-    align-self: flex-start;
+.daily-meta {
+    display: flex;
+    gap: 1.5rem;
+}
+
+.daily-meta div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.daily-meta dt {
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.daily-actions {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
 }
 
 .btn {
@@ -315,7 +391,7 @@ a {
     text-align: left;
 }
 
-input, select {
+input, select, textarea {
     padding: 0.9rem 1rem;
     border-radius: 12px;
     border: 1px solid rgba(148, 163, 184, 0.2);
@@ -343,12 +419,94 @@ input, select {
     max-width: 140px;
 }
 
+.progress-overview {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.summary-card {
+    background: rgba(17, 35, 64, 0.78);
+    border: 1px solid rgba(56, 189, 248, 0.1);
+    border-radius: 18px;
+    padding: 1.25rem;
+    display: grid;
+    gap: 0.35rem;
+    text-align: left;
+}
+
+.daily-panel {
+    display: grid;
+    gap: 1.25rem;
+    background: rgba(15, 23, 42, 0.78);
+    border-radius: 24px;
+    border: 1px solid rgba(56, 189, 248, 0.18);
+    padding: 1.75rem;
+}
+
+.daily-panel .label {
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
+.daily-stats {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.daily-panel .daily-actions {
+    justify-content: flex-start;
+}
+
 .admin-overview .stat-grid,
 .enrollments .track-progress-grid,
 .available-tracks .available-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 1.5rem;
+}
+
+.admin-management {
+    display: grid;
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+
+.management-column {
+    background: rgba(17, 35, 64, 0.78);
+    border: 1px solid rgba(56, 189, 248, 0.1);
+    border-radius: 22px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.management-column h3 {
+    margin: 0;
+}
+
+.stacked-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.stacked-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.stacked-form textarea {
+    resize: vertical;
 }
 
 .stat-card, .progress-card, .available-card {
@@ -632,6 +790,73 @@ input, select {
     }
 }
 
+@media (min-width: 768px) {
+    .app-header {
+        justify-content: space-between;
+        flex-wrap: nowrap;
+    }
+
+    .nav-toggle {
+        display: none;
+    }
+
+    .main-nav,
+    .main-nav.is-open {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 1rem;
+        width: auto;
+    }
+
+    .main-nav a {
+        text-align: left;
+    }
+
+    .content {
+        padding: 4rem 5vw 6rem;
+        gap: 3rem;
+    }
+
+    .hero {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 2rem;
+    }
+
+    .daily-callout {
+        grid-template-columns: 2fr 1fr;
+        align-items: center;
+    }
+
+    .daily-meta {
+        justify-content: flex-start;
+    }
+
+    .progress-overview {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .admin-management {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .parsons-play {
+        padding: 2rem;
+    }
+
+    .workspace-panels {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .workspace-panel {
+        display: block;
+    }
+
+    .panel-toggles {
+        display: none;
+    }
+}
+
 .inline {
     display: inline-block;
 }
@@ -710,36 +935,69 @@ input, select {
     background: rgba(15, 23, 42, 0.75);
     border-radius: 28px;
     border: 1px solid rgba(148, 163, 184, 0.15);
-    padding: 2rem;
+    padding: 1.5rem;
     display: grid;
-    gap: 2rem;
+    gap: 1.5rem;
 }
 
-.parsons-columns {
-    display: grid;
-    gap: 2rem;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+.panel-toggles {
+    display: flex;
+    gap: 0.75rem;
 }
 
-.parsons-column header {
+.toggle-btn {
+    flex: 1;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    background: transparent;
+    color: var(--text);
+    border-radius: 999px;
+    padding: 0.6rem 1rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.toggle-btn.is-active {
+    background: rgba(56, 189, 248, 0.2);
+    color: var(--primary);
+}
+
+.workspace-panels {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.workspace-panel {
+    display: none;
+    background: rgba(17, 35, 64, 0.6);
+    border-radius: 20px;
+    padding: 1.25rem;
+    border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.workspace-panel header {
     display: grid;
     gap: 0.5rem;
-    margin-bottom: 1.2rem;
+    margin-bottom: 1rem;
+}
+
+.workspace-panels[data-active-panel="pool"] [data-panel="pool"],
+.workspace-panels[data-active-panel="canvas"] [data-panel="canvas"] {
+    display: block;
 }
 
 .fragment-list {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    min-height: 280px;
+    min-height: 220px;
     padding: 1rem;
-    border-radius: 20px;
+    border-radius: 16px;
     background: rgba(15, 23, 42, 0.6);
     border: 1px dashed rgba(148, 163, 184, 0.2);
 }
 
 .fragment-list.solution {
-    min-height: 360px;
+    min-height: 260px;
     background: rgba(15, 23, 42, 0.45);
 }
 

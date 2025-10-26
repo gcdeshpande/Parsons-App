@@ -3,10 +3,51 @@
         <h1>Welcome back, <?= htmlspecialchars($user['name']) ?>!</h1>
         <p><?= is_admin() ? 'Monitor the arena and guide your players.' : 'Your progress path is glowing bright. Keep your streak alive!'; ?></p>
         <div class="streak-pill">
-            <span>Current streak</span>
-            <strong><?= random_int(1, 7) ?> days</strong>
+            <span>Lifetime completion</span>
+            <strong><?= $overallProgress['completionPercent'] ?>%</strong>
         </div>
     </header>
+
+    <section class="progress-overview">
+        <article class="summary-card">
+            <h2>Total XP</h2>
+            <p><?= number_format($overallProgress['xp']) ?> XP banked</p>
+        </article>
+        <article class="summary-card">
+            <h2>Puzzles mastered</h2>
+            <p><?= $overallProgress['solved'] ?> of <?= $overallProgress['totalProblems'] ?> puzzles</p>
+        </article>
+        <article class="summary-card">
+            <h2>Tracks engaged</h2>
+            <p><?= $overallProgress['tracks'] ?> tracks explored</p>
+        </article>
+        <article class="summary-card">
+            <h2>Next milestone</h2>
+            <p><?= $overallProgress['nextMilestone'] ?> puzzles for the next badge</p>
+        </article>
+    </section>
+
+    <?php if ($dailyChallenge): ?>
+        <section class="daily-panel">
+            <div>
+                <span class="label">Daily challenge · <?= htmlspecialchars($dailyChallenge['track_name']) ?></span>
+                <h2><?= htmlspecialchars($dailyChallenge['title']) ?></h2>
+                <p><?= htmlspecialchars($dailyChallenge['description']) ?></p>
+                <div class="daily-stats">
+                    <span><?= number_format($dailyChallenge['total_xp']) ?> XP reward</span>
+                    <span><?= number_format($dailyChallenge['completed_players']) ?> finishers</span>
+                </div>
+            </div>
+            <div class="daily-actions">
+                <?php if ($dailyChallenge['completed']): ?>
+                    <span class="badge success">Completed</span>
+                    <a class="btn ghost" href="index.php?page=problem&amp;track=<?= urlencode($dailyChallenge['track_id']) ?>&amp;id=<?= $dailyChallenge['problem_id'] ?>">Replay puzzle</a>
+                <?php else: ?>
+                    <a class="btn primary" href="index.php?page=problem&amp;track=<?= urlencode($dailyChallenge['track_id']) ?>&amp;id=<?= $dailyChallenge['problem_id'] ?>">Play now</a>
+                <?php endif; ?>
+            </div>
+        </section>
+    <?php endif; ?>
 
     <?php if (is_admin()): ?>
         <section class="admin-overview">
@@ -28,6 +69,121 @@
                         <a class="btn ghost" href="index.php?page=leaderboard&amp;track=<?= urlencode($track['id']) ?>">Manage leaderboard</a>
                     </div>
                 <?php endforeach; ?>
+            </div>
+        </section>
+
+        <section class="admin-management">
+            <div class="management-column">
+                <h3>Create a new track</h3>
+                <form action="index.php?page=admin-track-create" method="post" class="stacked-form">
+                    <label>
+                        <span>Track name</span>
+                        <input type="text" name="name" required>
+                    </label>
+                    <label>
+                        <span>Language</span>
+                        <input type="text" name="language" required>
+                    </label>
+                    <label>
+                        <span>Difficulty label</span>
+                        <input type="text" name="difficulty" placeholder="Intermediate">
+                    </label>
+                    <label>
+                        <span>XP per problem</span>
+                        <input type="number" name="xp_per_problem" min="10" step="5" value="60">
+                    </label>
+                    <label>
+                        <span>Description</span>
+                        <textarea name="description" rows="3" required></textarea>
+                    </label>
+                    <label>
+                        <span>Badges (comma separated)</span>
+                        <input type="text" name="badges" placeholder="Trailblazer, Architect, Maestro">
+                    </label>
+                    <label>
+                        <span>Themes (comma separated)</span>
+                        <input type="text" name="themes" placeholder="Algorithms, Patterns, Tooling">
+                    </label>
+                    <label>
+                        <span>Custom track ID (optional)</span>
+                        <input type="text" name="track_id" placeholder="custom-track">
+                    </label>
+                    <button class="btn primary" type="submit">Create track</button>
+                </form>
+            </div>
+            <div class="management-column">
+                <h3>Add a puzzle</h3>
+                <form action="index.php?page=admin-problem-create" method="post" class="stacked-form">
+                    <label>
+                        <span>Track</span>
+                        <select name="track_id" required>
+                            <option value="" disabled selected>Select track</option>
+                            <?php foreach ($tracks as $track): ?>
+                                <option value="<?= htmlspecialchars($track['id']) ?>"><?= htmlspecialchars($track['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label>
+                        <span>Title</span>
+                        <input type="text" name="title" required>
+                    </label>
+                    <label>
+                        <span>Synopsis</span>
+                        <textarea name="synopsis" rows="2" required></textarea>
+                    </label>
+                    <label>
+                        <span>Difficulty</span>
+                        <input type="text" name="difficulty" placeholder="Bronze">
+                    </label>
+                    <label>
+                        <span>XP reward</span>
+                        <input type="number" name="xp_reward" min="10" step="5" value="60">
+                    </label>
+                    <label>
+                        <span>Focus area</span>
+                        <input type="text" name="focus" placeholder="Async control">
+                    </label>
+                    <label>
+                        <span>Solution fragments (one per line, indent with spaces to set nesting)</span>
+                        <textarea name="solution_fragments" rows="6" required></textarea>
+                    </label>
+                    <label>
+                        <span>Distractor fragments (optional, one per line)</span>
+                        <textarea name="distractor_fragments" rows="4"></textarea>
+                    </label>
+                    <button class="btn secondary" type="submit">Add puzzle</button>
+                </form>
+            </div>
+            <div class="management-column">
+                <h3>Feature the daily challenge</h3>
+                <form action="index.php?page=admin-daily-challenge" method="post" class="stacked-form">
+                    <label>
+                        <span>Date</span>
+                        <input type="date" name="challenge_date" value="<?= date('Y-m-d') ?>">
+                    </label>
+                    <label>
+                        <span>Puzzle to feature</span>
+                        <select name="problem_id" required>
+                            <option value="" disabled selected>Select puzzle</option>
+                            <?php foreach ($problemOptions as $option): ?>
+                                <option value="<?= $option['id'] ?>"><?= htmlspecialchars($option['track_name'] . ' · ' . $option['title'] . ' (' . $option['difficulty'] . ')') ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label>
+                        <span>Headline</span>
+                        <input type="text" name="title" placeholder="Daily Challenge">
+                    </label>
+                    <label>
+                        <span>Teaser</span>
+                        <textarea name="description" rows="3" placeholder="Spotlight what makes this puzzle special."></textarea>
+                    </label>
+                    <label>
+                        <span>Bonus XP</span>
+                        <input type="number" name="xp_bonus" min="0" step="5" value="25">
+                    </label>
+                    <button class="btn ghost" type="submit">Update daily challenge</button>
+                </form>
             </div>
         </section>
     <?php endif; ?>
