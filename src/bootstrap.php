@@ -46,6 +46,16 @@ function db(): PDO
 function initialize_database(PDO $pdo): void
 {
     $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS users (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(255) NOT NULL UNIQUE,
+            password_hash VARCHAR(255) NOT NULL,
+            role ENUM("admin", "player") NOT NULL DEFAULT "player",
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+
+    $pdo->exec(
         'CREATE TABLE IF NOT EXISTS tracks (
             id VARCHAR(64) PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
@@ -141,12 +151,11 @@ function initialize_database(PDO $pdo): void
 
 function seed_database(PDO $pdo): void
 {
-    $trackCount = (int) $pdo->query('SELECT COUNT(*) FROM tracks')->fetchColumn();
-    if ($trackCount > 0) {
-        return;
-    }
+    ensure_default_admin($pdo);
 
-    $tracks = [
+    $trackCount = (int) $pdo->query('SELECT COUNT(*) FROM tracks')->fetchColumn();
+    if ($trackCount === 0) {
+        $tracks = [
         'php' => [
             'name' => 'PHP Wizardry',
             'language' => 'PHP',
@@ -260,11 +269,11 @@ function seed_database(PDO $pdo): void
         ],
     ];
 
-    foreach ($tracks as $id => $track) {
-        $stmt = $pdo->prepare('INSERT INTO tracks (id, name, language, difficulty, xp_per_problem, description) VALUES (:id, :name, :language, :difficulty, :xp, :description)');
-        $stmt->execute([
-            ':id' => $id,
-            ':name' => $track['name'],
+        foreach ($tracks as $id => $track) {
+            $stmt = $pdo->prepare('INSERT INTO tracks (id, name, language, difficulty, xp_per_problem, description) VALUES (:id, :name, :language, :difficulty, :xp, :description)');
+            $stmt->execute([
+                ':id' => $id,
+                ':name' => $track['name'],
             ':language' => $track['language'],
             ':difficulty' => $track['difficulty'],
             ':xp' => $track['xp_per_problem'],
@@ -290,36 +299,36 @@ function seed_database(PDO $pdo): void
         }
     }
 
-    $problemStmt = $pdo->prepare('INSERT INTO problems (track_id, title, synopsis, difficulty, xp_reward, focus) VALUES (:track_id, :title, :synopsis, :difficulty, :xp, :focus)');
-    $fragmentStmt = $pdo->prepare('INSERT INTO problem_fragments (problem_id, content, indent_level, is_distractor, sort_order) VALUES (:problem_id, :content, :indent, :distractor, :sort_order)');
-    $problemIdBuckets = [];
-    foreach ($problemDecks as $trackId => $problems) {
-        foreach ($problems as $problem) {
-            $problemStmt->execute([
-                ':track_id' => $trackId,
-                ':title' => $problem['title'],
-                ':synopsis' => $problem['synopsis'],
-                ':difficulty' => $problem['difficulty'],
-                ':xp' => $problem['xp'],
-                ':focus' => $problem['focus'],
-            ]);
-            $problemId = (int) $pdo->lastInsertId();
-            $problemIdBuckets[$trackId][] = ['id' => $problemId, 'xp' => $problem['xp']];
-
-            $fragments = generate_fragments_for_problem($trackId, $problem, count($problemIdBuckets[$trackId]) - 1);
-            foreach ($fragments as $fragment) {
-                $fragmentStmt->execute([
-                    ':problem_id' => $problemId,
-                    ':content' => $fragment['content'],
-                    ':indent' => $fragment['indent_level'],
-                    ':distractor' => $fragment['is_distractor'] ? 1 : 0,
-                    ':sort_order' => $fragment['sort_order'],
+        $problemStmt = $pdo->prepare('INSERT INTO problems (track_id, title, synopsis, difficulty, xp_reward, focus) VALUES (:track_id, :title, :synopsis, :difficulty, :xp, :focus)');
+        $fragmentStmt = $pdo->prepare('INSERT INTO problem_fragments (problem_id, content, indent_level, is_distractor, sort_order) VALUES (:problem_id, :content, :indent, :distractor, :sort_order)');
+        $problemIdBuckets = [];
+        foreach ($problemDecks as $trackId => $problems) {
+            foreach ($problems as $problem) {
+                $problemStmt->execute([
+                    ':track_id' => $trackId,
+                    ':title' => $problem['title'],
+                    ':synopsis' => $problem['synopsis'],
+                    ':difficulty' => $problem['difficulty'],
+                    ':xp' => $problem['xp'],
+                    ':focus' => $problem['focus'],
                 ]);
+                $problemId = (int) $pdo->lastInsertId();
+                $problemIdBuckets[$trackId][] = ['id' => $problemId, 'xp' => $problem['xp']];
+
+                $fragments = generate_fragments_for_problem($trackId, $problem, count($problemIdBuckets[$trackId]) - 1);
+                foreach ($fragments as $fragment) {
+                    $fragmentStmt->execute([
+                        ':problem_id' => $problemId,
+                        ':content' => $fragment['content'],
+                        ':indent' => $fragment['indent_level'],
+                        ':distractor' => $fragment['is_distractor'] ? 1 : 0,
+                        ':sort_order' => $fragment['sort_order'],
+                    ]);
+                }
             }
         }
-    }
 
-    $leaderboardSeeds = [
+        $leaderboardSeeds = [
         'php' => [
             ['name' => 'AstraLambda', 'solved' => 24, 'perfect' => 9],
             ['name' => 'CacheKnight', 'solved' => 21, 'perfect' => 7],
@@ -343,29 +352,102 @@ function seed_database(PDO $pdo): void
         ],
     ];
 
-    $resultStmt = $pdo->prepare('INSERT INTO results (track_id, problem_id, player_name, status, score, completed_at) VALUES (:track, :problem, :player, :status, :score, :completed_at)');
-    $now = new DateTimeImmutable('now');
+        $resultStmt = $pdo->prepare('INSERT INTO results (track_id, problem_id, player_name, status, score, completed_at) VALUES (:track, :problem, :player, :status, :score, :completed_at)');
+        $now = new DateTimeImmutable('now');
 
-    foreach ($leaderboardSeeds as $trackId => $players) {
-        $problems = $problemIdBuckets[$trackId] ?? [];
-        foreach ($players as $index => $player) {
-            $solvedProblems = array_slice($problems, 0, min($player['solved'], count($problems)));
-            foreach ($solvedProblems as $solvedIndex => $problemMeta) {
-                $status = $solvedIndex < $player['perfect'] ? 'perfect' : 'completed';
-                $date = $now->sub(new DateInterval('P' . ($solvedIndex + ($index * 2)) . 'D'));
-                $resultStmt->execute([
-                    ':track' => $trackId,
-                    ':problem' => $problemMeta['id'],
-                    ':player' => $player['name'],
-                    ':status' => $status,
-                    ':score' => $problemMeta['xp'],
-                    ':completed_at' => $date->format('Y-m-d H:i:s'),
-                ]);
+        foreach ($leaderboardSeeds as $trackId => $players) {
+            $problems = $problemIdBuckets[$trackId] ?? [];
+            foreach ($players as $index => $player) {
+                $solvedProblems = array_slice($problems, 0, min($player['solved'], count($problems)));
+                foreach ($solvedProblems as $solvedIndex => $problemMeta) {
+                    $status = $solvedIndex < $player['perfect'] ? 'perfect' : 'completed';
+                    $date = $now->sub(new DateInterval('P' . ($solvedIndex + ($index * 2)) . 'D'));
+                    $resultStmt->execute([
+                        ':track' => $trackId,
+                        ':problem' => $problemMeta['id'],
+                        ':player' => $player['name'],
+                        ':status' => $status,
+                        ':score' => $problemMeta['xp'],
+                        ':completed_at' => $date->format('Y-m-d H:i:s'),
+                    ]);
+                }
             }
         }
     }
 
-    get_daily_challenge();
+    ensure_daily_challenge_schedule($pdo);
+}
+
+function ensure_default_admin(PDO $pdo): void
+{
+    $adminCount = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
+    if ($adminCount > 0) {
+        return;
+    }
+
+    $username = 'admin';
+    $passwordHash = password_hash('AdminPass123!', PASSWORD_DEFAULT);
+
+    $stmt = $pdo->prepare('INSERT INTO users (username, password_hash, role) VALUES (:username, :password_hash, :role)');
+    $stmt->execute([
+        ':username' => $username,
+        ':password_hash' => $passwordHash,
+        ':role' => 'admin',
+    ]);
+}
+
+function ensure_daily_challenge_schedule(PDO $pdo): void
+{
+    $challengeCount = (int) $pdo->query('SELECT COUNT(*) FROM daily_challenges')->fetchColumn();
+    if ($challengeCount >= 21) {
+        return;
+    }
+
+    $problems = $pdo->query('SELECT p.id, p.title, p.track_id, p.xp_reward, p.difficulty, p.focus, t.name AS track_name FROM problems p JOIN tracks t ON t.id = p.track_id ORDER BY p.xp_reward DESC, p.id')->fetchAll(PDO::FETCH_ASSOC);
+    if (!$problems) {
+        return;
+    }
+
+    $existingDates = $pdo->query('SELECT challenge_date FROM daily_challenges')->fetchAll(PDO::FETCH_COLUMN);
+    $occupied = [];
+    foreach ($existingDates as $date) {
+        $occupied[$date] = true;
+    }
+
+    $start = new DateTimeImmutable('today');
+    $offset = 0;
+    $inserted = 0;
+    $stmt = $pdo->prepare('INSERT INTO daily_challenges (challenge_date, problem_id, title, description, xp_bonus) VALUES (:date, :problem, :title, :description, :bonus) ON DUPLICATE KEY UPDATE problem_id = VALUES(problem_id), title = VALUES(title), description = VALUES(description), xp_bonus = VALUES(xp_bonus)');
+
+    foreach ($problems as $problem) {
+        while (isset($occupied[$start->add(new DateInterval('P' . $offset . 'D'))->format('Y-m-d')])) {
+            $offset++;
+            if ($offset > count($problems) + 60) {
+                break 2;
+            }
+        }
+
+        $targetDate = $start->add(new DateInterval('P' . $offset . 'D'));
+        $title = sprintf('Daily: %s', $problem['title']);
+        $description = sprintf('Crack this %s %s quest from %s.', strtolower($problem['difficulty']), strtolower($problem['focus']), $problem['track_name']);
+        $xpBonus = max(20, (int) round($problem['xp_reward'] * 0.3));
+
+        $stmt->execute([
+            ':date' => $targetDate->format('Y-m-d'),
+            ':problem' => $problem['id'],
+            ':title' => $title,
+            ':description' => $description,
+            ':bonus' => $xpBonus,
+        ]);
+
+        $occupied[$targetDate->format('Y-m-d')] = true;
+        $offset++;
+        $inserted++;
+
+        if ($inserted >= 21) {
+            break;
+        }
+    }
 }
 
 function load_tracks(): array
@@ -473,14 +555,114 @@ function load_leaderboards(): array
     return $leaderboards;
 }
 
+function find_user_by_username(string $username): ?array
+{
+    $pdo = db();
+    $stmt = $pdo->prepare('SELECT id, username, password_hash, role FROM users WHERE username = :username');
+    $stmt->execute([':username' => $username]);
+
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function register_user(string $username, string $password): array
+{
+    $username = trim($username);
+    if ($username === '' || !preg_match('/^[A-Za-z0-9_\-]{3,32}$/', $username)) {
+        return ['success' => false, 'message' => 'Choose a username using 3-32 letters, numbers, underscores, or dashes.'];
+    }
+
+    if (strlen($password) < 8) {
+        return ['success' => false, 'message' => 'Use a password with at least 8 characters.'];
+    }
+
+    if (find_user_by_username($username)) {
+        return ['success' => false, 'message' => 'That username is already taken. Pick another handle.'];
+    }
+
+    $pdo = db();
+    $stmt = $pdo->prepare('INSERT INTO users (username, password_hash, role) VALUES (:username, :password_hash, "player")');
+    $stmt->execute([
+        ':username' => $username,
+        ':password_hash' => password_hash($password, PASSWORD_DEFAULT),
+    ]);
+
+    $user = [
+        'id' => (int) $pdo->lastInsertId(),
+        'username' => $username,
+        'role' => 'player',
+    ];
+
+    return ['success' => true, 'message' => 'Registration complete! Welcome to the arena.', 'user' => $user];
+}
+
+function authenticate_user(string $username, string $password): ?array
+{
+    $user = find_user_by_username($username);
+    if (!$user) {
+        return null;
+    }
+
+    if (!password_verify($password, $user['password_hash'])) {
+        return null;
+    }
+
+    return $user;
+}
+
+function login_user(array $user): void
+{
+    session_regenerate_id(true);
+    $_SESSION['user'] = [
+        'id' => (int) $user['id'],
+        'name' => $user['username'],
+        'role' => $user['role'],
+    ];
+    $_SESSION['enrollments'] = [];
+}
+
+function logout_user(): void
+{
+    session_regenerate_id(true);
+    unset($_SESSION['user'], $_SESSION['enrollments']);
+}
+
 function current_user(): ?array
 {
-    return $_SESSION['user'] ?? null;
+    if (!isset($_SESSION['user'])) {
+        return null;
+    }
+
+    $sessionUser = $_SESSION['user'];
+    if (!isset($sessionUser['id'])) {
+        logout_user();
+        return null;
+    }
+
+    $pdo = db();
+    $stmt = $pdo->prepare('SELECT id, username, role FROM users WHERE id = :id');
+    $stmt->execute([':id' => $sessionUser['id']]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$row) {
+        logout_user();
+        return null;
+    }
+
+    $user = [
+        'id' => (int) $row['id'],
+        'name' => $row['username'],
+        'role' => $row['role'],
+    ];
+    $_SESSION['user'] = $user;
+
+    return $user;
 }
 
 function is_admin(): bool
 {
-    return isset($_SESSION['user']) && $_SESSION['user']['role'] === 'admin';
+    $user = current_user();
+    return $user ? $user['role'] === 'admin' : false;
 }
 
 function require_login(): void
@@ -601,7 +783,7 @@ function user_overall_progress(string $playerName): array
     ];
 }
 
-function record_result(string $trackId, int $problemId, string $playerName, string $status, int $score): void
+function record_result(string $trackId, int $problemId, string $playerName, string $status, int $score): bool
 {
     $pdo = db();
     $existing = $pdo->prepare('SELECT id FROM results WHERE problem_id = :problem AND player_name = :player LIMIT 1');
@@ -611,7 +793,7 @@ function record_result(string $trackId, int $problemId, string $playerName, stri
     ]);
 
     if ($existing->fetchColumn()) {
-        return;
+        return false;
     }
 
     $stmt = $pdo->prepare('INSERT INTO results (track_id, problem_id, player_name, status, score, completed_at) VALUES (:track, :problem, :player, :status, :score, :completed_at)');
@@ -624,7 +806,7 @@ function record_result(string $trackId, int $problemId, string $playerName, stri
         ':completed_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'),
     ]);
 
-    mark_daily_completion($problemId, $playerName);
+    return true;
 }
 
 function completed_problem_ids(string $trackId, string $playerName): array
@@ -776,15 +958,30 @@ function grade_problem_attempt(string $trackId, int $problemId, array $submitted
         return ['success' => false, 'message' => 'The sequence is out of order. Try again!'];
     }
 
+    $xpReward = (int) $problem['xp_reward'];
+    $xpBonus = 0;
+    $totalXp = $xpReward;
     $alreadySolved = has_player_completed_problem($problemId, $playerName);
+
     if (!$alreadySolved) {
-        record_result($trackId, $problemId, $playerName, 'perfect', (int) $problem['xp_reward']);
+        [$xpBonus, $challengeId] = resolve_daily_bonus_for_completion($problemId, $playerName);
+        $totalXp += $xpBonus;
+        $recorded = record_result($trackId, $problemId, $playerName, 'perfect', $totalXp);
+        if ($recorded && $challengeId) {
+            mark_daily_completion($challengeId, $playerName);
+        }
+    }
+
+    $message = $alreadySolved ? 'Puzzle already mastered — XP was previously awarded.' : 'Legendary! You assembled the puzzle flawlessly.';
+    if (!$alreadySolved && $xpBonus > 0) {
+        $message .= ' Daily bonus unlocked!';
     }
 
     return [
         'success' => true,
-        'message' => $alreadySolved ? 'Puzzle already mastered — XP was previously awarded.' : 'Legendary! You assembled the puzzle flawlessly.',
-        'xp' => (int) $problem['xp_reward'],
+        'message' => $message,
+        'xp' => $totalXp,
+        'xp_bonus' => $xpBonus,
         'alreadySolved' => $alreadySolved,
     ];
 }
@@ -792,32 +989,39 @@ function grade_problem_attempt(string $trackId, int $problemId, array $submitted
 function get_daily_challenge(?string $playerName = null, ?DateTimeInterface $date = null): ?array
 {
     $pdo = db();
-    $targetDate = $date ? $date->format('Y-m-d') : (new DateTimeImmutable('today'))->format('Y-m-d');
+    $today = $date ? $date->format('Y-m-d') : (new DateTimeImmutable('today'))->format('Y-m-d');
 
-    $challenge = fetch_daily_challenge_row($pdo, $targetDate);
+    if ($playerName) {
+        $challenge = fetch_random_unsolved_challenge($pdo, $playerName, $today);
+
+        if (!$challenge) {
+            $challenge = fetch_daily_challenge_row($pdo, $today);
+            if (!$challenge) {
+                $challenge = auto_seed_daily_challenge($pdo, $today);
+            }
+
+            if (!$challenge || has_completed_daily_challenge((int) $challenge['id'], $playerName)) {
+                return null;
+            }
+        }
+
+        $challenge['completed_players'] = fetch_daily_completion_count($pdo, (int) $challenge['id']);
+
+        return format_daily_challenge_payload($challenge, false);
+    }
+
+    $challenge = fetch_daily_challenge_row($pdo, $today);
     if (!$challenge) {
-        $challenge = auto_seed_daily_challenge($pdo, $targetDate);
+        $challenge = auto_seed_daily_challenge($pdo, $today);
     }
 
     if (!$challenge) {
         return null;
     }
 
-    $isCompleted = false;
-    if ($playerName) {
-        $attemptStmt = $pdo->prepare('SELECT 1 FROM daily_attempts WHERE challenge_id = :challenge AND player_name = :player LIMIT 1');
-        $attemptStmt->execute([
-            ':challenge' => $challenge['id'],
-            ':player' => $playerName,
-        ]);
-        $isCompleted = (bool) $attemptStmt->fetchColumn();
-    }
+    $challenge['completed_players'] = fetch_daily_completion_count($pdo, (int) $challenge['id']);
 
-    $completionStmt = $pdo->prepare('SELECT COUNT(*) FROM daily_attempts WHERE challenge_id = :challenge');
-    $completionStmt->execute([':challenge' => $challenge['id']]);
-    $challenge['completed_players'] = (int) $completionStmt->fetchColumn();
-
-    return format_daily_challenge_payload($challenge, $isCompleted);
+    return format_daily_challenge_payload($challenge, false);
 }
 
 function format_daily_challenge_payload(array $challenge, bool $completed): array
@@ -848,6 +1052,31 @@ function fetch_daily_challenge_row(PDO $pdo, string $date): ?array
     return $row ?: null;
 }
 
+function fetch_random_unsolved_challenge(PDO $pdo, string $playerName, string $today): ?array
+{
+    $sql = 'SELECT dc.*, p.track_id, p.title AS problem_title, p.xp_reward, t.name AS track_name
+            FROM daily_challenges dc
+            JOIN problems p ON p.id = dc.problem_id
+            JOIN tracks t ON t.id = p.track_id
+            LEFT JOIN daily_attempts da ON da.challenge_id = dc.id AND da.player_name = :player
+            WHERE da.id IS NULL
+            ORDER BY CASE
+                WHEN dc.challenge_date = :today THEN 0
+                WHEN dc.challenge_date > :today THEN 1
+                ELSE 2
+            END, RAND()
+            LIMIT 1';
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([
+        ':player' => $playerName,
+        ':today' => $today,
+    ]);
+
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
 function auto_seed_daily_challenge(PDO $pdo, string $date): ?array
 {
     $problemId = $pdo->query('SELECT id FROM problems ORDER BY RAND() LIMIT 1')->fetchColumn();
@@ -864,7 +1093,7 @@ function auto_seed_daily_challenge(PDO $pdo, string $date): ?array
 
     $title = sprintf('Daily: %s', $problem['title']);
     $description = sprintf('Master this %s %s challenge from %s.', strtolower($problem['difficulty']), strtolower($problem['focus']), $problem['track_name']);
-    $xpBonus = max(15, (int) round($problem['xp_reward'] * 0.25));
+    $xpBonus = max(20, (int) round($problem['xp_reward'] * 0.3));
 
     upsert_daily_challenge(new DateTimeImmutable($date), (int) $problem['id'], $title, $description, $xpBonus);
 
@@ -884,26 +1113,75 @@ function upsert_daily_challenge(DateTimeInterface $date, int $problemId, string 
     ]);
 }
 
-function mark_daily_completion(int $problemId, string $playerName): void
+function mark_daily_completion(int $challengeId, string $playerName): void
 {
     $pdo = db();
-    $today = (new DateTimeImmutable('today'))->format('Y-m-d');
-    $challengeStmt = $pdo->prepare('SELECT id FROM daily_challenges WHERE challenge_date = :date AND problem_id = :problem');
-    $challengeStmt->execute([
-        ':date' => $today,
-        ':problem' => $problemId,
-    ]);
-    $challengeId = $challengeStmt->fetchColumn();
-    if (!$challengeId) {
-        return;
-    }
-
     $attemptStmt = $pdo->prepare('INSERT IGNORE INTO daily_attempts (challenge_id, player_name, completed_at) VALUES (:challenge, :player, :completed_at)');
     $attemptStmt->execute([
         ':challenge' => $challengeId,
         ':player' => $playerName,
         ':completed_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'),
     ]);
+}
+
+function has_completed_daily_challenge(int $challengeId, string $playerName): bool
+{
+    $pdo = db();
+    $stmt = $pdo->prepare('SELECT 1 FROM daily_attempts WHERE challenge_id = :challenge AND player_name = :player LIMIT 1');
+    $stmt->execute([
+        ':challenge' => $challengeId,
+        ':player' => $playerName,
+    ]);
+
+    return (bool) $stmt->fetchColumn();
+}
+
+function fetch_daily_challenge_by_id(PDO $pdo, int $challengeId): ?array
+{
+    $stmt = $pdo->prepare('SELECT dc.*, p.track_id, p.title AS problem_title, p.xp_reward, t.name AS track_name FROM daily_challenges dc JOIN problems p ON p.id = dc.problem_id JOIN tracks t ON t.id = p.track_id WHERE dc.id = :id');
+    $stmt->execute([':id' => $challengeId]);
+
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function fetch_daily_completion_count(PDO $pdo, int $challengeId): int
+{
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM daily_attempts WHERE challenge_id = :challenge');
+    $stmt->execute([':challenge' => $challengeId]);
+
+    return (int) $stmt->fetchColumn();
+}
+
+function resolve_daily_bonus_for_completion(int $problemId, string $playerName): array
+{
+    $pdo = db();
+    $today = (new DateTimeImmutable('today'))->format('Y-m-d');
+
+    $sql = 'SELECT dc.id, dc.xp_bonus
+            FROM daily_challenges dc
+            LEFT JOIN daily_attempts da ON da.challenge_id = dc.id AND da.player_name = :player
+            WHERE dc.problem_id = :problem AND da.id IS NULL
+            ORDER BY CASE
+                WHEN dc.challenge_date = :today THEN 0
+                WHEN dc.challenge_date > :today THEN 1
+                ELSE 2
+            END, dc.challenge_date ASC
+            LIMIT 1';
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([
+        ':player' => $playerName,
+        ':problem' => $problemId,
+        ':today' => $today,
+    ]);
+
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return [0, null];
+    }
+
+    return [(int) $row['xp_bonus'], (int) $row['id']];
 }
 
 function admin_set_daily_challenge(string $date, int $problemId, string $title, string $description, int $xpBonus): void
@@ -1312,5 +1590,148 @@ function list_all_problems(): array
             'difficulty' => $row['difficulty'],
         ];
     }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+}
+
+function bulk_import_problem_fragments(?array $file): array
+{
+    if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return ['success' => false, 'message' => 'Upload a CSV file containing fragments to import.'];
+    }
+
+    $handle = fopen($file['tmp_name'], 'rb');
+    if (!$handle) {
+        return ['success' => false, 'message' => 'Unable to read uploaded fragment file.'];
+    }
+
+    $pdo = db();
+    $problemIds = $pdo->query('SELECT id FROM problems')->fetchAll(PDO::FETCH_COLUMN);
+    $validProblems = array_fill_keys(array_map('intval', $problemIds), true);
+
+    $insertStmt = $pdo->prepare('INSERT INTO problem_fragments (problem_id, content, indent_level, is_distractor, sort_order) VALUES (:problem, :content, :indent, :distractor, :sort_order)');
+
+    $inserted = 0;
+    $skipped = 0;
+
+    $pdo->beginTransaction();
+    try {
+        $rowIndex = 0;
+        while (($row = fgetcsv($handle)) !== false) {
+            if ($row === [null] || $row === false) {
+                continue;
+            }
+
+            $rowIndex++;
+            if ($rowIndex === 1 && isset($row[0]) && strtolower(trim((string) $row[0])) === 'problem_id') {
+                continue;
+            }
+
+            $row = array_map(static fn($value) => is_string($value) ? trim($value) : $value, $row);
+            [$problemId, $content, $indent, $isDistractor, $sortOrder] = array_pad($row, 5, null);
+
+            $problemId = (int) $problemId;
+            if ($problemId <= 0 || !isset($validProblems[$problemId]) || $content === null || $content === '') {
+                $skipped++;
+                continue;
+            }
+
+            $indentLevel = max(0, (int) $indent);
+            $distractor = in_array(strtolower((string) $isDistractor), ['1', 'true', 'yes'], true) ? 1 : 0;
+            $orderValue = ($sortOrder === null || $sortOrder === '') ? null : (int) $sortOrder;
+
+            $insertStmt->execute([
+                ':problem' => $problemId,
+                ':content' => $content,
+                ':indent' => $indentLevel,
+                ':distractor' => $distractor,
+                ':sort_order' => $orderValue,
+            ]);
+
+            $inserted++;
+        }
+
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        $pdo->rollBack();
+        fclose($handle);
+        return ['success' => false, 'message' => 'Bulk fragment import failed: ' . $exception->getMessage()];
+    }
+
+    fclose($handle);
+
+    if ($inserted === 0) {
+        return ['success' => false, 'message' => 'No fragments were imported. Verify the CSV structure.'];
+    }
+
+    $message = sprintf('Imported %d fragments%s.', $inserted, $skipped > 0 ? sprintf(' (%d rows skipped)', $skipped) : '');
+
+    return ['success' => true, 'message' => $message];
+}
+
+function bulk_import_daily_challenges(?array $file): array
+{
+    if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return ['success' => false, 'message' => 'Upload a CSV file containing daily challenge rows.'];
+    }
+
+    $handle = fopen($file['tmp_name'], 'rb');
+    if (!$handle) {
+        return ['success' => false, 'message' => 'Unable to read uploaded daily challenge file.'];
+    }
+
+    $pdo = db();
+    $problemIds = $pdo->query('SELECT id FROM problems')->fetchAll(PDO::FETCH_COLUMN);
+    $validProblems = array_fill_keys(array_map('intval', $problemIds), true);
+
+    $inserted = 0;
+    $skipped = 0;
+
+    try {
+        while (($row = fgetcsv($handle)) !== false) {
+            if ($row === [null] || $row === false) {
+                continue;
+            }
+
+            if ($inserted + $skipped === 0 && isset($row[0]) && strtolower(trim((string) $row[0])) === 'challenge_date') {
+                continue;
+            }
+
+            $row = array_map(static fn($value) => is_string($value) ? trim($value) : $value, $row);
+            [$dateInput, $problemId, $title, $description, $xpBonus] = array_pad($row, 5, null);
+
+            $problemId = (int) $problemId;
+            if ($problemId <= 0 || !isset($validProblems[$problemId])) {
+                $skipped++;
+                continue;
+            }
+
+            $date = DateTimeImmutable::createFromFormat('Y-m-d', (string) $dateInput) ?: null;
+            if (!$date) {
+                $skipped++;
+                continue;
+            }
+
+            $title = $title !== null && $title !== '' ? $title : 'Daily Challenge';
+            $description = $description !== null && $description !== '' ? $description : 'Ready for today’s featured puzzle?';
+            $bonus = max(0, (int) $xpBonus);
+
+            upsert_daily_challenge($date, $problemId, $title, $description, $bonus);
+            $inserted++;
+        }
+    } catch (Throwable $exception) {
+        fclose($handle);
+        return ['success' => false, 'message' => 'Bulk daily challenge import failed: ' . $exception->getMessage()];
+    }
+
+    fclose($handle);
+
+    if ($inserted === 0) {
+        return ['success' => false, 'message' => 'No daily challenges were imported. Check the CSV contents.'];
+    }
+
+    ensure_daily_challenge_schedule($pdo);
+
+    $message = sprintf('Imported %d daily challenges%s.', $inserted, $skipped > 0 ? sprintf(' (%d rows skipped)', $skipped) : '');
+
+    return ['success' => true, 'message' => $message];
 }
 

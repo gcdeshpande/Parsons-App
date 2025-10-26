@@ -13,19 +13,54 @@ function render(string $template, array $data = []): void
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($page === 'login') {
         $username = trim($_POST['username'] ?? '');
-        $role = $_POST['role'] ?? 'player';
+        $password = $_POST['password'] ?? '';
 
-        if ($username !== '') {
-            $_SESSION['user'] = [
-                'name' => $username,
-                'role' => $role,
-            ];
-            if (!isset($_SESSION['enrollments'])) {
-                $_SESSION['enrollments'] = [];
-            }
+        if ($username === '' || $password === '') {
+            add_flash('error', 'Enter both username and password to log in.');
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        $user = authenticate_user($username, $password);
+        if ($user) {
+            login_user($user);
+            add_flash('success', 'Welcome back!');
             header('Location: index.php?page=dashboard');
             exit;
         }
+
+        add_flash('error', 'Invalid credentials. Please try again.');
+        header('Location: index.php?page=login');
+        exit;
+    }
+
+    if ($page === 'register') {
+        $username = trim($_POST['username'] ?? '');
+        $password = $_POST['password'] ?? '';
+        $confirm = $_POST['password_confirm'] ?? '';
+
+        if ($password !== $confirm) {
+            add_flash('error', 'Passwords do not match.');
+            header('Location: index.php?page=register');
+            exit;
+        }
+
+        $result = register_user($username, $password);
+        if ($result['success']) {
+            $user = [
+                'id' => $result['user']['id'],
+                'username' => $result['user']['username'],
+                'role' => $result['user']['role'],
+            ];
+            login_user($user);
+            add_flash('success', $result['message']);
+            header('Location: index.php?page=dashboard');
+            exit;
+        }
+
+        add_flash('error', $result['message']);
+        header('Location: index.php?page=register');
+        exit;
     }
 
     if ($page === 'enroll' && isset($_POST['track_id'])) {
@@ -66,6 +101,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             add_flash('error', 'Select a puzzle to feature as the daily challenge.');
         }
 
+        header('Location: index.php?page=dashboard');
+        exit;
+    }
+
+    if ($page === 'admin-fragment-bulk') {
+        require_admin();
+        $result = bulk_import_problem_fragments($_FILES['fragment_csv'] ?? null);
+        add_flash($result['success'] ? 'success' : 'error', $result['message']);
+        header('Location: index.php?page=dashboard');
+        exit;
+    }
+
+    if ($page === 'admin-daily-bulk') {
+        require_admin();
+        $result = bulk_import_daily_challenges($_FILES['daily_csv'] ?? null);
+        add_flash($result['success'] ? 'success' : 'error', $result['message']);
         header('Location: index.php?page=dashboard');
         exit;
     }
@@ -111,7 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if ($page === 'logout') {
-    session_destroy();
+    logout_user();
     header('Location: index.php');
     exit;
 }
@@ -124,6 +175,9 @@ $leaderboards = load_leaderboards();
 switch ($page) {
     case 'login':
         render('login.php', compact('tracks'));
+        break;
+    case 'register':
+        render('register.php', compact('tracks'));
         break;
     case 'dashboard':
         require_login();

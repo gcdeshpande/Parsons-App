@@ -47,6 +47,14 @@
                 <?php endif; ?>
             </div>
         </section>
+    <?php else: ?>
+        <section class="daily-panel empty">
+            <div>
+                <span class="label">Daily challenge</span>
+                <h2>All clear!</h2>
+                <p>You’ve conquered every featured puzzle available right now. Check back soon for a fresh challenge.</p>
+            </div>
+        </section>
     <?php endif; ?>
 
     <?php if (is_admin()): ?>
@@ -183,6 +191,28 @@
                         <input type="number" name="xp_bonus" min="0" step="5" value="25">
                     </label>
                     <button class="btn ghost" type="submit">Update daily challenge</button>
+                </form>
+            </div>
+            <div class="management-column">
+                <h3>Bulk upload fragments</h3>
+                <form action="index.php?page=admin-fragment-bulk" method="post" class="stacked-form" enctype="multipart/form-data">
+                    <label>
+                        <span>CSV file</span>
+                        <input type="file" name="fragment_csv" accept=".csv" required>
+                    </label>
+                    <p class="form-hint">Columns: <code>problem_id,content,indent_level,is_distractor,sort_order</code></p>
+                    <button class="btn secondary" type="submit">Upload fragments</button>
+                </form>
+            </div>
+            <div class="management-column">
+                <h3>Bulk upload daily challenges</h3>
+                <form action="index.php?page=admin-daily-bulk" method="post" class="stacked-form" enctype="multipart/form-data">
+                    <label>
+                        <span>CSV file</span>
+                        <input type="file" name="daily_csv" accept=".csv" required>
+                    </label>
+                    <p class="form-hint">Columns: <code>challenge_date,problem_id,title,description,xp_bonus</code></p>
+                    <button class="btn secondary" type="submit">Upload schedule</button>
                 </form>
             </div>
         </section>

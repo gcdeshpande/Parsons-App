@@ -26,6 +26,7 @@
             <a href="index.php?page=logout" class="logout">Log out</a>
         <?php else: ?>
             <a href="index.php?page=login" class="cta">Log in</a>
+            <a href="index.php?page=register" class="cta ghost">Register</a>
         <?php endif; ?>
     </nav>
 </header>

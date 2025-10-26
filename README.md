@@ -45,6 +45,11 @@ templates/      # View templates rendered per route
 
 The application provisions the MySQL schema and seed data on first run using the configured credentials.
 
+## Accounts
+
+- New players can register from the **Register** link in the navigation. Usernames accept letters, numbers, underscores, or dashes and require an 8+ character password.
+- A default admin account is seeded for convenience: `admin` / `AdminPass123!`. Update or replace this user directly in the database for production deployments. Admin access is only available via stored users—there is no admin option on the public registration form.
+
 ## Solving Parsons puzzles
 
 1. Enroll in a track from the home page or dashboard. The track roster unlocks a **Play** button for each quest once enrolled.
@@ -54,9 +59,9 @@ The application provisions the MySQL schema and seed data on first run using the
 
 ### Daily challenge
 
-- The home page and dashboard highlight the featured puzzle of the day, including XP payout (base + bonus) and completion counts.
-- Logged-in players can jump straight into the challenge; once solved it is marked complete and still available for replay practice.
-- Administrators can retarget the daily challenge to any puzzle (including new ones) and adjust the bonus XP or teaser copy from the dashboard.
+- The home page and dashboard highlight a featured puzzle with combined base + bonus XP and community completion totals.
+- Logged-in players see a random daily challenge they have not yet solved—once cleared it disappears until a fresh challenge is available, ensuring the card never repeats solved entries.
+- Administrators can retarget the daily challenge to any puzzle (including new ones) and adjust the bonus XP or teaser copy from the dashboard. XP bonuses are awarded the first time a player completes the featured puzzle.
 
 ### Admin tools
 
@@ -65,3 +70,5 @@ When logged in as an admin, the dashboard exposes a management suite for live co
 - **Create track** – supply language, description, difficulty, optional custom slug, plus comma-separated badges/themes. The track is created immediately with default XP-per-problem.
 - **Add puzzle** – choose a track, specify synopsis metadata, and paste solution/distractor fragments (one per line, indentation driven by leading spaces). The fragment pool and solution ordering are generated automatically.
 - **Feature daily challenge** – pick any puzzle from the catalog, customise the headline/teaser, and adjust bonus XP for the selected date.
+- **Bulk upload fragments** – import CSV rows (`problem_id,content,indent_level,is_distractor,sort_order`) to append fragments to existing puzzles.
+- **Bulk upload daily challenges** – import CSV rows (`challenge_date,problem_id,title,description,xp_bonus`) to seed or update the rotating featured puzzle schedule.

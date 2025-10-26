@@ -282,7 +282,15 @@
                     .then(function (payload) {
                         if (payload.success) {
                             arena.dataset.solved = 'true';
-                            setFeedback(payload.message + (payload.alreadySolved ? '' : ' +' + payload.xp + ' XP!'), 'success');
+                            var xpMessage = '';
+                            if (!payload.alreadySolved) {
+                                xpMessage = ' +' + payload.xp + ' XP';
+                                if (payload.xp_bonus) {
+                                    xpMessage += ' (+' + payload.xp_bonus + ' bonus)';
+                                }
+                                xpMessage += '!';
+                            }
+                            setFeedback(payload.message + xpMessage, 'success');
                         } else {
                             setFeedback(payload.message || 'Not quite right yet.', 'error');
                         }
